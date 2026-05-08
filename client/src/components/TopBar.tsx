@@ -1,4 +1,4 @@
-import { Download, LayoutDashboard, LifeBuoy, Share2, Users, Wifi, WifiOff } from "lucide-react";
+import { Download, LayoutDashboard, LifeBuoy, LogOut, Share2, Home, Users, Wifi, WifiOff } from "lucide-react";
 import type { Participant } from "../../../shared/src/types";
 import type { ConnectionStatus } from "../hooks/useBoardSocket";
 
@@ -7,11 +7,16 @@ interface TopBarProps {
   classroomId?: string;
   connectionStatus: ConnectionStatus;
   helpRequested: boolean;
+  userName: string;
   participants: Participant[];
   onBoardNameChange: (name: string) => void;
   onDashboardOpen: () => void;
   onExportPng: () => void;
+  onExportPdf: () => void;
+  onExportSvg: () => void;
   onHelpToggle: () => void;
+  onLeaveRoom: () => void;
+  onLogout: () => void;
   onShare: () => void;
 }
 
@@ -20,11 +25,16 @@ export function TopBar({
   classroomId,
   connectionStatus,
   helpRequested,
+  userName,
   participants,
   onBoardNameChange,
   onDashboardOpen,
   onExportPng,
+  onExportPdf,
+  onExportSvg,
   onHelpToggle,
+  onLeaveRoom,
+  onLogout,
   onShare
 }: TopBarProps) {
   const connected = connectionStatus === "connected";
@@ -40,6 +50,10 @@ export function TopBar({
       />
 
       <div className="topbar-spacer" />
+
+      <span className="connection-pill" title={userName}>
+        {userName}
+      </span>
 
       <div className={connected ? "connection-pill connected" : "connection-pill offline"}>
         {connected ? <Wifi size={16} /> : <WifiOff size={16} />}
@@ -75,9 +89,22 @@ export function TopBar({
         <Share2 size={16} />
         Share
       </button>
+      <button className="text-button" onClick={onLeaveRoom} type="button">
+        <Home size={16} />
+        Rooms
+      </button>
       <button className="text-button primary" onClick={onExportPng} type="button">
         <Download size={16} />
         Export PNG
+      </button>
+      <button className="text-button" onClick={onExportSvg} type="button">
+        SVG
+      </button>
+      <button className="text-button" onClick={onExportPdf} type="button">
+        PDF
+      </button>
+      <button className="icon-button" onClick={onLogout} title="Log out" type="button">
+        <LogOut size={16} />
       </button>
     </header>
   );

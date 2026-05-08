@@ -1,14 +1,15 @@
-import { RotateCcw, X } from "lucide-react";
+import { BookmarkPlus, RotateCcw, X } from "lucide-react";
 import type { BoardVersionSnapshot } from "../../../shared/src/types";
 
 interface VersionHistoryProps {
   open: boolean;
   versions: BoardVersionSnapshot[];
   onClose: () => void;
+  onCreateCheckpoint: () => void;
   onRestore: (snapshot: BoardVersionSnapshot) => void;
 }
 
-export function VersionHistory({ open, versions, onClose, onRestore }: VersionHistoryProps) {
+export function VersionHistory({ open, versions, onClose, onCreateCheckpoint, onRestore }: VersionHistoryProps) {
   if (!open) {
     return null;
   }
@@ -20,9 +21,15 @@ export function VersionHistory({ open, versions, onClose, onRestore }: VersionHi
           <span className="panel-kicker">History</span>
           <h2>Last 10 Snapshots</h2>
         </div>
-        <button className="icon-button" onClick={onClose} title="Close history" type="button">
-          <X size={18} />
-        </button>
+        <div className="drawer-header-actions">
+          <button className="small-button" onClick={onCreateCheckpoint} title="Save checkpoint" type="button">
+            <BookmarkPlus size={15} />
+            Checkpoint
+          </button>
+          <button className="icon-button" onClick={onClose} title="Close history" type="button">
+            <X size={18} />
+          </button>
+        </div>
       </div>
       <div className="drawer-list">
         {versions.length > 0 ? (
@@ -34,7 +41,7 @@ export function VersionHistory({ open, versions, onClose, onRestore }: VersionHi
                 <div>
                   <strong>{snapshot.label}</strong>
                   <p>
-                    {snapshot.objectCount} objects · {new Date(snapshot.createdAt).toLocaleTimeString()}
+                    {snapshot.objectCount} objects - {new Date(snapshot.createdAt).toLocaleTimeString()}
                   </p>
                 </div>
                 <button className="icon-button" onClick={() => onRestore(snapshot)} title="Restore version" type="button">
