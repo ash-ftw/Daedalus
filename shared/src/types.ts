@@ -23,6 +23,68 @@ export interface Participant {
   lastActiveAt: string;
 }
 
+export type AuthRole = "student" | "instructor" | "user";
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email?: string;
+  role: AuthRole;
+  color: string;
+  createdAt: string;
+  lastLoginAt: string;
+}
+
+export interface AuthSession {
+  token: string;
+  user: AuthUser;
+  createdAt: string;
+}
+
+export type RoomVisibility = "private" | "public";
+export type RoomMemberRole = "owner" | "editor" | "viewer" | "instructor";
+
+export interface CollaborationRoom {
+  roomId: string;
+  name: string;
+  classroomId?: string;
+  ownerId: string;
+  ownerName: string;
+  visibility: RoomVisibility;
+  archivedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  memberRole?: RoomMemberRole;
+  memberCount?: number;
+  objectCount?: number;
+  thumbnailDataUrl?: string;
+}
+
+export interface RoomMembership {
+  roomId: string;
+  userId: string;
+  userName: string;
+  role: RoomMemberRole;
+  invitedBy?: string;
+  joinedAt: string;
+  updatedAt: string;
+}
+
+export interface RoomInvite {
+  code: string;
+  roomId: string;
+  role: Exclude<RoomMemberRole, "owner">;
+  createdBy: string;
+  createdAt: string;
+  expiresAt?: string;
+  revokedAt?: string;
+}
+
+export interface RoomAccess {
+  room: CollaborationRoom;
+  membership: RoomMembership;
+}
+
 export interface CursorPayload {
   userId: string;
   name: string;
@@ -42,24 +104,28 @@ export type CanvasOperation =
   | {
       type: "upsert";
       userId: string;
+      clientId?: string;
       boardVersion: number;
       object: CanvasObjectPayload;
     }
   | {
       type: "delete";
       userId: string;
+      clientId?: string;
       boardVersion: number;
       objectId: string;
     }
   | {
       type: "replace";
       userId: string;
+      clientId?: string;
       boardVersion: number;
       objects: CanvasObjectPayload[];
     }
   | {
       type: "clear";
       userId: string;
+      clientId?: string;
       boardVersion: number;
     };
 
@@ -115,6 +181,29 @@ export interface AnalysisResult {
   complexityScore: number;
 }
 
+export type LanguageCode = "en" | "es" | "hi" | "zh";
+
+export interface GeneratedArtifact {
+  id: string;
+  roomId: string;
+  kind: "sql" | "pseudocode" | "typescript" | "state-machine" | "circuit-notes" | "markdown";
+  title: string;
+  language: string;
+  content: string;
+  warnings: string[];
+  createdAt: string;
+}
+
+export interface LayoutSuggestion {
+  id: string;
+  roomId: string;
+  title: string;
+  description: string;
+  impact: "low" | "medium" | "high";
+  objectIds: string[];
+  createdAt: string;
+}
+
 export interface ChatMessage {
   id: string;
   roomId: string;
@@ -151,6 +240,8 @@ export interface BoardSnapshot {
   boardName: string;
   classroomId?: string;
   ownerName?: string;
+  thumbnailDataUrl?: string;
+  preferredLanguage: LanguageCode;
   helpRequested: boolean;
   objects: CanvasObjectPayload[];
   version: number;
@@ -167,6 +258,8 @@ export interface BoardSummary {
   boardName: string;
   classroomId?: string;
   ownerName?: string;
+  thumbnailDataUrl?: string;
+  preferredLanguage: LanguageCode;
   helpRequested: boolean;
   objectCount: number;
   commentCount: number;
@@ -221,4 +314,34 @@ export interface IntegrationStatus {
   configured: boolean;
   status: "ready" | "stub" | "missing-config";
   description: string;
+}
+
+export interface StorageStatus {
+  provider: "memory" | "file" | "postgres";
+  persistent: boolean;
+  roomCount: number;
+  path?: string;
+  lastPersistedAt?: string;
+  lastError?: string;
+}
+
+export interface InstitutionTuningProfile {
+  configured: boolean;
+  label: string;
+  rubric: string[];
+  defaultLanguage: LanguageCode;
+}
+
+export interface SessionDebrief {
+  classroomId?: string;
+  generatedAt: string;
+  headline: string;
+  themes: string[];
+  instructorActions: string[];
+  studentGroupsNeedingHelp: Array<{
+    roomId: string;
+    boardName: string;
+    reason: string;
+  }>;
+  celebrationPoints: string[];
 }

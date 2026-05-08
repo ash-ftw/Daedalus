@@ -8,6 +8,7 @@ import type {
   CanvasOperation,
   ChatMessage,
   CursorPayload,
+  LanguageCode,
   Participant
 } from "../../../shared/src/types";
 
@@ -24,7 +25,7 @@ export interface RemoteCursor extends CursorPayload {
   seenAt: number;
 }
 
-export function useBoardSocket(roomId: string, participant: Participant, classroomId?: string) {
+export function useBoardSocket(roomId: string, participant: Participant, classroomId?: string, authToken?: string) {
   const socketRef = useRef<Socket | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
   const [boardState, setBoardState] = useState<BoardSnapshot | null>(null);
@@ -53,7 +54,7 @@ export function useBoardSocket(roomId: string, participant: Participant, classro
 
     socket.on("connect", () => {
       setConnectionStatus("connected");
-      socket.emit("join-board", { roomId, participant, classroomId });
+      socket.emit("join-board", { roomId, participant, classroomId, authToken });
     });
 
     socket.on("disconnect", () => {
@@ -62,6 +63,11 @@ export function useBoardSocket(roomId: string, participant: Participant, classro
 
     socket.on("connect_error", () => {
       setConnectionStatus("offline");
+    });
+
+    socket.on("auth-error", (message: string) => {
+      setConnectionStatus("offline");
+      pushToast(message);
     });
 
     socket.on("board-state", (state: BoardSnapshot) => {
@@ -112,7 +118,7 @@ export function useBoardSocket(roomId: string, participant: Participant, classro
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [classroomId, participant, pushToast, roomId]);
+  }, [authToken, classroomId, participant, pushToast, roomId]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -168,7 +174,7 @@ export function useBoardSocket(roomId: string, participant: Participant, classro
     socketRef.current?.emit("participant-update", patch);
   }, []);
 
-  const updateBoardMeta = useCallback((patch: { boardName?: string; classroomId?: string; helpRequested?: boolean }) => {
+  const updateBoardMeta = useCallback((patch: { boardName?: string; classroomId?: string; preferredLanguage?: LanguageCode; helpRequested?: boolean }) => {
     socketRef.current?.emit("board-meta-update", patch);
   }, []);
 

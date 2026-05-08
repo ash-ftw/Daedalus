@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { fabric } from "fabric";
-import { ClipboardCheck, History, LayoutTemplate, MessageSquare, Minus, Plus } from "lucide-react";
+import { ArrowRight, ClipboardCheck, History, LayoutTemplate, LogOut, MessageSquare, Minus, Plus, Sparkles } from "lucide-react";
 import { AiPanel } from "./components/AiPanel";
 import { CommentsPanel } from "./components/CommentsPanel";
+import { EnhancementsPanel } from "./components/EnhancementsPanel";
 import { InstructorDashboard } from "./components/InstructorDashboard";
 import { QualityReportPanel } from "./components/QualityReportPanel";
 import { TemplateLibrary } from "./components/TemplateLibrary";
@@ -13,17 +14,24 @@ import { API_URL, useBoardSocket, type ToastMessage } from "./hooks/useBoardSock
 import { boardTemplates } from "../../shared/src/templates";
 import type {
   AnalysisIssue,
+  AuthRole,
+  AuthSession,
+  AuthUser,
   BoardTemplate,
   BoardVersionSnapshot,
   CanvasObjectPayload,
   CanvasOperation,
+  CollaborationRoom,
   CursorPayload,
   DrawingTool,
-  Participant
+  LanguageCode,
+  Participant,
+  RoomMemberRole,
+  RoomMembership
 } from "../../shared/src/types";
 
 const FABRIC_CUSTOM_PROPS = ["objectId", "objectType", "authorId", "excludeFromExport"];
-const PARTICIPANT_COLORS = ["#2563eb", "#db2777", "#059669", "#d97706", "#7c3aed", "#0f766e", "#dc2626"];
+const AUTH_TOKEN_STORAGE_KEY = "daedalus-auth-token";
 
 type FabricObjectWithMeta = fabric.Object & {
   objectId?: string;
@@ -34,55 +42,55 @@ type FabricObjectWithMeta = fabric.Object & {
 
 const nowIso = () => new Date().toISOString();
 
-function ensureRoomId() {
+function readRoomId() {
   const params = new URLSearchParams(window.location.search);
-  const existing = params.get("room");
-
-  if (existing) {
-    return existing;
-  }
-
-  const roomId = crypto.randomUUID().slice(0, 8);
-  params.set("room", roomId);
-  window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
-  return roomId;
+  return params.get("room");
 }
 
 function readClassroomId() {
   return new URLSearchParams(window.location.search).get("classroom") ?? undefined;
 }
 
+function readInviteCode() {
+  return new URLSearchParams(window.location.search).get("invite");
+}
+
 function isInstructorMode() {
   return new URLSearchParams(window.location.search).get("mode") === "instructor";
 }
 
-function createParticipant(): Participant {
-  const stored = window.localStorage.getItem("daedalus-participant");
+function authHeader(token: string) {
+  return {
+    Authorization: `Bearer ${token}`
+  };
+}
 
-  if (stored) {
-    const parsed = JSON.parse(stored) as Participant;
-    return {
-      ...parsed,
-      tool: "select",
-      online: true,
-      lastActiveAt: nowIso()
-    };
-  }
-
-  const id = crypto.randomUUID();
-  const participant: Participant = {
-    id,
-    name: `Guest ${id.slice(0, 4)}`,
-    color: PARTICIPANT_COLORS[Math.floor(Math.random() * PARTICIPANT_COLORS.length)],
-    role: "owner",
+function participantFromUser(user: AuthUser): Participant {
+  return {
+    id: user.id,
+    name: user.name,
+    color: user.color,
+    role: user.role === "instructor" ? "instructor" : "editor",
     tool: "select",
     online: true,
     joinedAt: nowIso(),
     lastActiveAt: nowIso()
   };
+}
 
-  window.localStorage.setItem("daedalus-participant", JSON.stringify(participant));
-  return participant;
+function openRoom(room: Pick<CollaborationRoom, "roomId" | "classroomId">) {
+  const params = new URLSearchParams();
+  params.set("room", room.roomId);
+
+  if (room.classroomId) {
+    params.set("classroom", room.classroomId);
+  }
+
+  window.location.href = `${window.location.pathname}?${params.toString()}`;
+}
+
+function openLobby() {
+  window.location.href = window.location.pathname;
 }
 
 function isSerializableObject(object: fabric.Object) {
@@ -96,10 +104,484 @@ function objectById(canvas: fabric.Canvas, objectId: string) {
     | undefined;
 }
 
-function BoardApp() {
-  const roomId = useMemo(ensureRoomId, []);
+interface LoginScreenProps {
+  onLogin: (session: AuthSession) => void;
+}
+
+function LoginScreen({ onLogin }: LoginScreenProps) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<AuthRole>("student");
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
+
+  const login = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setStatus("loading");
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ name, email, role })
+      });
+
+      if (!response.ok) {
+        throw new Error("Login failed");
+      }
+
+      const session = (await response.json()) as AuthSession;
+      window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, session.token);
+      onLogin(session);
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  return (
+    <main className="auth-shell">
+      <form className="auth-panel" onSubmit={(event) => void login(event)}>
+        <div className="brand-row">
+          <div className="brand-mark">D</div>
+          <div>
+            <span className="panel-kicker">Daedalus</span>
+            <h1>Sign in to collaborate</h1>
+          </div>
+        </div>
+        <label>
+          Name
+          <input minLength={2} onChange={(event) => setName(event.target.value)} placeholder="Student name" required value={name} />
+        </label>
+        <label>
+          Email
+          <input onChange={(event) => setEmail(event.target.value)} placeholder="name@example.edu" type="email" value={email} />
+        </label>
+        <label>
+          Role
+          <select onChange={(event) => setRole(event.target.value as AuthRole)} value={role}>
+            <option value="student">Student</option>
+            <option value="instructor">Instructor</option>
+            <option value="user">User</option>
+          </select>
+        </label>
+        <button className="wide-button primary" disabled={status === "loading"} type="submit">
+          <ArrowRight size={16} />
+          {status === "loading" ? "Signing in..." : "Continue"}
+        </button>
+        {status === "error" ? <p className="form-error">Could not sign in. Check the name and email fields.</p> : null}
+      </form>
+    </main>
+  );
+}
+
+interface RoomLobbyProps {
+  session: AuthSession;
+  onLogout: () => void;
+}
+
+function InviteAccepting({ code, session }: { code: string; session: AuthSession }) {
+  const [status, setStatus] = useState<"loading" | "error">("loading");
+
+  useEffect(() => {
+    const accept = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/rooms/invites/${encodeURIComponent(code)}/accept`, {
+          method: "POST",
+          headers: authHeader(session.token)
+        });
+
+        if (!response.ok) {
+          throw new Error("Invite failed");
+        }
+
+        const access = (await response.json()) as { room: CollaborationRoom };
+        openRoom(access.room);
+      } catch {
+        setStatus("error");
+      }
+    };
+
+    void accept();
+  }, [code, session.token]);
+
+  return (
+    <main className="auth-shell">
+      <div className="auth-panel">
+        <div className="brand-row">
+          <div className="brand-mark">D</div>
+          <div>
+            <span className="panel-kicker">Room invite</span>
+            <h1>{status === "loading" ? "Joining room" : "Invite unavailable"}</h1>
+          </div>
+        </div>
+        {status === "error" ? <p className="form-error">This invite could not be accepted. Ask the room owner for a new link.</p> : null}
+      </div>
+    </main>
+  );
+}
+
+function RoomLobby({ session, onLogout }: RoomLobbyProps) {
+  const [rooms, setRooms] = useState<CollaborationRoom[]>([]);
+  const [roomName, setRoomName] = useState("New collaboration room");
+  const [classroomId, setClassroomId] = useState("");
+  const [visibility, setVisibility] = useState<"private" | "public">("private");
+  const [joinInput, setJoinInput] = useState("");
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [membersRoomId, setMembersRoomId] = useState<string | null>(null);
+  const [membersByRoom, setMembersByRoom] = useState<Record<string, RoomMembership[]>>({});
+
+  const loadRooms = useCallback(async () => {
+    setStatus("loading");
+
+    try {
+      const response = await fetch(`${API_URL}/api/rooms`, {
+        headers: authHeader(session.token)
+      });
+
+      if (!response.ok) {
+        throw new Error("Room list failed");
+      }
+
+      setRooms((await response.json()) as CollaborationRoom[]);
+      setStatus("ready");
+    } catch {
+      setStatus("error");
+    }
+  }, [session.token]);
+
+  useEffect(() => {
+    void loadRooms();
+  }, [loadRooms]);
+
+  const createRoom = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const response = await fetch(`${API_URL}/api/rooms`, {
+      method: "POST",
+      headers: {
+        ...authHeader(session.token),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        name: roomName,
+        classroomId,
+        visibility
+      })
+    });
+
+    if (response.ok) {
+      openRoom((await response.json()) as CollaborationRoom);
+    } else {
+      setStatus("error");
+    }
+  };
+
+  const updateRoom = async (room: CollaborationRoom, patch: Partial<Pick<CollaborationRoom, "name" | "visibility">>) => {
+    const response = await fetch(`${API_URL}/api/rooms/${encodeURIComponent(room.roomId)}`, {
+      method: "PATCH",
+      headers: {
+        ...authHeader(session.token),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(patch)
+    });
+
+    if (response.ok) {
+      void loadRooms();
+    } else {
+      setStatus("error");
+    }
+  };
+
+  const renameRoom = (room: CollaborationRoom) => {
+    const nextName = window.prompt("Room name", room.name);
+
+    if (nextName?.trim()) {
+      void updateRoom(room, { name: nextName.trim() });
+    }
+  };
+
+  const toggleRoomVisibility = (room: CollaborationRoom) => {
+    void updateRoom(room, {
+      visibility: room.visibility === "private" ? "public" : "private"
+    });
+  };
+
+  const archiveRoom = async (room: CollaborationRoom) => {
+    const response = await fetch(`${API_URL}/api/rooms/${encodeURIComponent(room.roomId)}`, {
+      method: "DELETE",
+      headers: authHeader(session.token)
+    });
+
+    if (response.ok) {
+      void loadRooms();
+    } else {
+      setStatus("error");
+    }
+  };
+
+  const copyInviteLink = async (room: CollaborationRoom) => {
+    const response = await fetch(`${API_URL}/api/rooms/${encodeURIComponent(room.roomId)}/invites`, {
+      method: "POST",
+      headers: {
+        ...authHeader(session.token),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ role: "editor" })
+    });
+
+    if (!response.ok) {
+      setStatus("error");
+      return;
+    }
+
+    const invite = (await response.json()) as { code: string };
+    const params = new URLSearchParams();
+    params.set("invite", invite.code);
+    const link = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+    await navigator.clipboard.writeText(link);
+  };
+
+  const loadMembers = async (room: CollaborationRoom) => {
+    const response = await fetch(`${API_URL}/api/rooms/${encodeURIComponent(room.roomId)}/members`, {
+      headers: authHeader(session.token)
+    });
+
+    if (!response.ok) {
+      setStatus("error");
+      return;
+    }
+
+    const members = (await response.json()) as RoomMembership[];
+    setMembersByRoom((current) => ({
+      ...current,
+      [room.roomId]: members
+    }));
+    setMembersRoomId((current) => (current === room.roomId ? null : room.roomId));
+  };
+
+  const updateMemberRole = async (room: CollaborationRoom, member: RoomMembership, role: Exclude<RoomMemberRole, "owner">) => {
+    const response = await fetch(`${API_URL}/api/rooms/${encodeURIComponent(room.roomId)}/members/${encodeURIComponent(member.userId)}`, {
+      method: "PATCH",
+      headers: {
+        ...authHeader(session.token),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ role })
+    });
+
+    if (!response.ok) {
+      setStatus("error");
+      return;
+    }
+
+    const members = (await response.json()) as RoomMembership[];
+    setMembersByRoom((current) => ({
+      ...current,
+      [room.roomId]: members
+    }));
+    void loadRooms();
+  };
+
+  const removeMember = async (room: CollaborationRoom, member: RoomMembership) => {
+    const response = await fetch(`${API_URL}/api/rooms/${encodeURIComponent(room.roomId)}/members/${encodeURIComponent(member.userId)}`, {
+      method: "DELETE",
+      headers: authHeader(session.token)
+    });
+
+    if (!response.ok) {
+      setStatus("error");
+      return;
+    }
+
+    const members = (await response.json()) as RoomMembership[];
+    setMembersByRoom((current) => ({
+      ...current,
+      [room.roomId]: members
+    }));
+    void loadRooms();
+  };
+
+  const joinRoom = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmed = joinInput.trim();
+    let roomId = trimmed;
+
+    if (trimmed.includes("room=")) {
+      try {
+        roomId = new URL(trimmed).searchParams.get("room") ?? trimmed;
+      } catch {
+        roomId = new URLSearchParams(trimmed.startsWith("?") ? trimmed.slice(1) : trimmed).get("room") ?? trimmed;
+      }
+    }
+
+    if (!roomId) {
+      return;
+    }
+
+    const response = await fetch(`${API_URL}/api/rooms/join`, {
+      method: "POST",
+      headers: {
+        ...authHeader(session.token),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ roomId })
+    });
+
+    if (response.ok) {
+      openRoom((await response.json()) as CollaborationRoom);
+    } else {
+      setStatus("error");
+    }
+  };
+
+  return (
+    <main className="lobby-shell">
+      <header className="lobby-header">
+        <div className="brand-row">
+          <div className="brand-mark">D</div>
+          <div>
+            <span className="panel-kicker">Signed in as {session.user.role}</span>
+            <h1>{session.user.name}</h1>
+          </div>
+        </div>
+        <button className="text-button" onClick={onLogout} type="button">
+          <LogOut size={16} />
+          Log out
+        </button>
+      </header>
+
+      <section className="lobby-grid">
+        <form className="lobby-panel" onSubmit={(event) => void createRoom(event)}>
+          <h2>Create a room</h2>
+          <label>
+            Room name
+            <input onChange={(event) => setRoomName(event.target.value)} required value={roomName} />
+          </label>
+          <label>
+            Classroom
+            <input onChange={(event) => setClassroomId(event.target.value)} placeholder="optional" value={classroomId} />
+          </label>
+          <label>
+            Access
+            <select onChange={(event) => setVisibility(event.target.value as "private" | "public")} value={visibility}>
+              <option value="private">Private</option>
+              <option value="public">Public</option>
+            </select>
+          </label>
+          <button className="wide-button primary" type="submit">
+            Create room
+          </button>
+        </form>
+
+        <form className="lobby-panel" onSubmit={(event) => void joinRoom(event)}>
+          <h2>Join a room</h2>
+          <label>
+            Room code or link
+            <input onChange={(event) => setJoinInput(event.target.value)} placeholder="Paste room id or URL" required value={joinInput} />
+          </label>
+          <button className="wide-button" type="submit">
+            Join room
+          </button>
+        </form>
+      </section>
+
+      <section className="room-list-section">
+        <div className="section-heading">
+          <h2>Your rooms</h2>
+          <button className="small-button" onClick={() => void loadRooms()} type="button">
+            Refresh
+          </button>
+        </div>
+        {status === "error" ? <p className="form-error">Could not load rooms.</p> : null}
+        <div className="room-list">
+          {rooms.map((room) => (
+            <article className="room-card" key={room.roomId}>
+              <div className="room-card-main">
+                <div className={room.thumbnailDataUrl ? "room-card-thumb has-image" : "room-card-thumb"}>
+                  {room.thumbnailDataUrl ? <img alt="" src={room.thumbnailDataUrl} /> : <small>{room.objectCount ?? 0}</small>}
+                </div>
+                <div>
+                  <strong>{room.name}</strong>
+                  <p>{room.classroomId ? `Classroom ${room.classroomId}` : "No classroom assigned"}</p>
+                  <span className="room-card-meta">
+                    {room.roomId} - {room.visibility} - {room.memberRole ?? "viewer"}
+                  </span>
+                </div>
+              </div>
+              <div className="room-card-actions">
+                <button className="small-button primary" onClick={() => openRoom(room)} type="button">
+                  Open
+                </button>
+                {room.memberRole === "owner" || room.memberRole === "instructor" ? (
+                  <>
+                    <button className="small-button" onClick={() => renameRoom(room)} type="button">
+                      Rename
+                    </button>
+                    <button className="small-button" onClick={() => toggleRoomVisibility(room)} type="button">
+                      {room.visibility === "private" ? "Make public" : "Make private"}
+                    </button>
+                    <button className="small-button" onClick={() => void copyInviteLink(room)} type="button">
+                      Invite
+                    </button>
+                    <button className="small-button" onClick={() => void loadMembers(room)} type="button">
+                      Members
+                    </button>
+                    <button className="small-button danger" onClick={() => void archiveRoom(room)} type="button">
+                      Archive
+                    </button>
+                  </>
+                ) : null}
+              </div>
+              {membersRoomId === room.roomId ? (
+                <div className="room-member-list">
+                  {(membersByRoom[room.roomId] ?? []).map((member) => (
+                    <div className="room-member-row" key={member.userId}>
+                      <div>
+                        <strong>{member.userName}</strong>
+                        <span>{member.userId === room.ownerId ? "owner" : member.role}</span>
+                      </div>
+                      {member.role === "owner" ? (
+                        <span className="room-member-owner">Owner</span>
+                      ) : (
+                        <div className="room-member-actions">
+                          <select
+                            onChange={(event) => void updateMemberRole(room, member, event.target.value as Exclude<RoomMemberRole, "owner">)}
+                            value={member.role}
+                          >
+                            <option value="editor">Editor</option>
+                            <option value="viewer">Viewer</option>
+                            <option value="instructor">Instructor</option>
+                          </select>
+                          <button className="small-button danger" onClick={() => void removeMember(room, member)} type="button">
+                            Remove
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </article>
+          ))}
+        </div>
+        {status === "ready" && rooms.length === 0 ? <p className="empty-copy">Create your first room to start collaborating.</p> : null}
+      </section>
+    </main>
+  );
+}
+
+interface BoardAppProps {
+  roomId: string;
+  session: AuthSession;
+  onLeaveRoom: () => void;
+  onLogout: () => void;
+}
+
+function BoardApp({ roomId, session, onLeaveRoom, onLogout }: BoardAppProps) {
   const classroomId = useMemo(readClassroomId, []);
-  const participant = useMemo(createParticipant, []);
+  const clientInstanceId = useMemo(() => crypto.randomUUID(), []);
+  const participant = useMemo(() => participantFromUser(session.user), [session.user]);
   const canvasElementRef = useRef<HTMLCanvasElement | null>(null);
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
@@ -111,6 +593,7 @@ function BoardApp() {
   const historyRef = useRef<string[]>([]);
   const redoRef = useRef<string[]>([]);
   const analysisTimerRef = useRef<number | null>(null);
+  const thumbnailTimerRef = useRef<number | null>(null);
   const didLoadInitialBoardRef = useRef(false);
 
   const [boardName, setBoardName] = useState("Collaborative AI Whiteboard");
@@ -133,6 +616,7 @@ function BoardApp() {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [commentPlacing, setCommentPlacing] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
+  const [enhancementsOpen, setEnhancementsOpen] = useState(false);
 
   const {
     analysis,
@@ -152,7 +636,7 @@ function BoardApp() {
     updateBoardMeta,
     updateComment,
     updateParticipant
-  } = useBoardSocket(roomId, participant, classroomId);
+  } = useBoardSocket(roomId, participant, classroomId, session.token);
 
   const currentToolRef = useRef(currentTool);
   const strokeColorRef = useRef(strokeColor);
@@ -246,6 +730,25 @@ function BoardApp() {
     return dataUrl;
   }, []);
 
+  const serializeThumbnailImage = useCallback(() => {
+    const canvas = fabricRef.current;
+
+    if (!canvas) {
+      return undefined;
+    }
+
+    const previousBackground = canvas.backgroundColor;
+    canvas.setBackgroundColor("#ffffff", () => undefined);
+    const dataUrl = canvas.toDataURL({
+      format: "png",
+      multiplier: 0.25,
+      enableRetinaScaling: false
+    });
+    canvas.setBackgroundColor(previousBackground ?? "", () => undefined);
+    canvas.requestRenderAll();
+    return dataUrl;
+  }, []);
+
   const updateHistoryFlags = useCallback(() => {
     setCanUndo(historyRef.current.length > 1);
     setCanRedo(redoRef.current.length > 0);
@@ -272,12 +775,23 @@ function BoardApp() {
       sendOperation({
         type: "replace",
         userId: participant.id,
+        clientId: clientInstanceId,
         boardVersion: 0,
         objects
       });
     },
-    [participant.id, sendOperation]
+    [clientInstanceId, participant.id, sendOperation]
   );
+
+  const applyObjectInteractionMode = useCallback((object: fabric.Object) => {
+    const isHighlight = (object as FabricObjectWithMeta).objectType === "analysis-highlight";
+    const tool = currentToolRef.current;
+    object.set({
+      selectable: !isHighlight && tool === "select",
+      evented: !isHighlight && (tool === "select" || tool === "eraser"),
+      strokeUniform: true
+    });
+  }, []);
 
   const loadObjects = useCallback((objects: CanvasObjectPayload[]) => {
     const canvas = fabricRef.current;
@@ -297,12 +811,13 @@ function BoardApp() {
 
     fabric.util.enlivenObjects(objects, (enlivenedObjects: fabric.Object[]) => {
       enlivenedObjects.forEach((object: fabric.Object) => {
+        applyObjectInteractionMode(object);
         canvas.add(object);
       });
       canvas.requestRenderAll();
       isApplyingRemoteRef.current = false;
     }, "fabric");
-  }, []);
+  }, [applyObjectInteractionMode]);
 
   const runAnalysis = useCallback(async () => {
     setIsAnalyzing(true);
@@ -330,19 +845,71 @@ function BoardApp() {
     }, 2500);
   }, []);
 
+  const saveThumbnail = useCallback(async () => {
+    const thumbnailDataUrl = serializeThumbnailImage();
+
+    if (!thumbnailDataUrl) {
+      return;
+    }
+
+    try {
+      await fetch(`${API_URL}/api/boards/${encodeURIComponent(roomId)}/thumbnail`, {
+        method: "POST",
+        headers: {
+          ...authHeader(session.token),
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ thumbnailDataUrl })
+      });
+    } catch {
+      // Thumbnails are a live preview convenience; the canvas state remains authoritative.
+    }
+  }, [roomId, serializeThumbnailImage, session.token]);
+
+  const saveThumbnailRef = useRef(saveThumbnail);
+
+  useEffect(() => {
+    saveThumbnailRef.current = saveThumbnail;
+  }, [saveThumbnail]);
+
+  const scheduleThumbnailUpdate = useCallback(() => {
+    if (thumbnailTimerRef.current) {
+      window.clearTimeout(thumbnailTimerRef.current);
+    }
+
+    thumbnailTimerRef.current = window.setTimeout(() => {
+      void saveThumbnailRef.current();
+    }, 900);
+  }, []);
+
+  const scheduleBoardRefresh = useCallback(() => {
+    scheduleAnalysis();
+    scheduleThumbnailUpdate();
+  }, [scheduleAnalysis, scheduleThumbnailUpdate]);
+
+  useEffect(
+    () => () => {
+      if (analysisTimerRef.current) {
+        window.clearTimeout(analysisTimerRef.current);
+      }
+
+      if (thumbnailTimerRef.current) {
+        window.clearTimeout(thumbnailTimerRef.current);
+      }
+    },
+    []
+  );
+
   const assignMetadata = useCallback(
     (object: fabric.Object, objectType: string) => {
       const objectWithMeta = object as FabricObjectWithMeta;
       objectWithMeta.objectId = objectWithMeta.objectId ?? crypto.randomUUID();
       objectWithMeta.objectType = objectType;
       objectWithMeta.authorId = participant.id;
-      object.set({
-        strokeUniform: true,
-        selectable: currentToolRef.current === "select"
-      });
+      applyObjectInteractionMode(object);
       return objectWithMeta;
     },
-    [participant.id]
+    [applyObjectInteractionMode, participant.id]
   );
 
   const broadcastObject = useCallback(
@@ -356,11 +923,12 @@ function BoardApp() {
       sendOperation({
         type: "upsert",
         userId: participant.id,
+        clientId: clientInstanceId,
         boardVersion: 0,
         object: object.toObject(FABRIC_CUSTOM_PROPS) as CanvasObjectPayload
       });
     },
-    [participant.id, sendOperation]
+    [clientInstanceId, participant.id, sendOperation]
   );
 
   const addObjectAndBroadcast = useCallback(
@@ -377,9 +945,9 @@ function BoardApp() {
       canvas.requestRenderAll();
       broadcastObject(object);
       pushHistory();
-      scheduleAnalysis();
+      scheduleBoardRefresh();
     },
-    [assignMetadata, broadcastObject, pushHistory, scheduleAnalysis]
+    [assignMetadata, broadcastObject, pushHistory, scheduleBoardRefresh]
   );
 
   const createShapeAt = useCallback(
@@ -596,7 +1164,7 @@ function BoardApp() {
       assignMetadata(path, "stroke");
       broadcastObject(path);
       pushHistory();
-      scheduleAnalysis();
+      scheduleBoardRefresh();
     };
 
     const handleObjectModified = (event: fabric.IEvent<Event>) => {
@@ -607,7 +1175,7 @@ function BoardApp() {
       assignMetadata(event.target, (event.target as FabricObjectWithMeta).objectType ?? "object");
       broadcastObject(event.target);
       pushHistory();
-      scheduleAnalysis();
+      scheduleBoardRefresh();
     };
 
     const handleMouseDown = (event: fabric.IEvent<MouseEvent>) => {
@@ -657,13 +1225,14 @@ function BoardApp() {
             sendOperation({
               type: "delete",
               userId: participant.id,
+              clientId: clientInstanceId,
               boardVersion: 0,
               objectId
             });
           }
 
           pushHistory();
-          scheduleAnalysis();
+          scheduleBoardRefresh();
         }
 
         return;
@@ -751,7 +1320,7 @@ function BoardApp() {
         } else {
           broadcastObject(line);
           pushHistory();
-          scheduleAnalysis();
+          scheduleBoardRefresh();
         }
       }
     };
@@ -786,11 +1355,12 @@ function BoardApp() {
     broadcastObject,
     createShapeAt,
     createComment,
+    clientInstanceId,
     participant.color,
     participant.id,
     participant.name,
     pushHistory,
-    scheduleAnalysis,
+    scheduleBoardRefresh,
     sendCursor,
     sendOperation,
     updateHistoryFlags
@@ -813,13 +1383,11 @@ function BoardApp() {
     }
 
     canvas.getObjects().forEach((object) => {
-      const isHighlight = (object as FabricObjectWithMeta).objectType === "analysis-highlight";
-      object.selectable = !isHighlight && currentTool === "select";
-      object.evented = !isHighlight && (currentTool === "select" || currentTool === "eraser");
+      applyObjectInteractionMode(object);
     });
     canvas.discardActiveObject();
     canvas.requestRenderAll();
-  }, [currentTool, strokeColor, strokeWidth]);
+  }, [applyObjectInteractionMode, currentTool, strokeColor, strokeWidth]);
 
   useEffect(() => {
     if (!canvasReady || !boardState || didLoadInitialBoardRef.current) {
@@ -833,6 +1401,15 @@ function BoardApp() {
     updateHistoryFlags();
     didLoadInitialBoardRef.current = true;
   }, [boardState, canvasReady, loadObjects, updateHistoryFlags]);
+
+  useEffect(() => {
+    if (!canvasReady || !boardState || !didLoadInitialBoardRef.current || boardState.thumbnailDataUrl || boardState.objects.length === 0) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(scheduleThumbnailUpdate, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [boardState?.objects.length, boardState?.roomId, boardState?.thumbnailDataUrl, canvasReady, scheduleThumbnailUpdate]);
 
   useEffect(() => {
     if (!boardState?.boardName || boardState.boardName === "Untitled board") {
@@ -849,7 +1426,7 @@ function BoardApp() {
       return;
     }
 
-    if (remoteOperation.userId === participant.id) {
+    if (remoteOperation.clientId === clientInstanceId) {
       return;
     }
 
@@ -889,12 +1466,13 @@ function BoardApp() {
     }
 
     fabric.util.enlivenObjects([remoteOperation.object], ([object]: fabric.Object[]) => {
+      applyObjectInteractionMode(object);
       canvas.add(object);
       canvas.requestRenderAll();
       isApplyingRemoteRef.current = false;
       scheduleAnalysis();
     }, "fabric");
-  }, [canvasReady, loadObjects, participant.id, remoteOperation, scheduleAnalysis]);
+  }, [applyObjectInteractionMode, canvasReady, clientInstanceId, loadObjects, remoteOperation, scheduleAnalysis]);
 
   const undo = useCallback(() => {
     if (historyRef.current.length <= 1) {
@@ -913,8 +1491,8 @@ function BoardApp() {
     loadObjects(objects);
     sendReplaceOperation(objects);
     updateHistoryFlags();
-    scheduleAnalysis();
-  }, [loadObjects, scheduleAnalysis, sendReplaceOperation, updateHistoryFlags]);
+    scheduleBoardRefresh();
+  }, [loadObjects, scheduleBoardRefresh, sendReplaceOperation, updateHistoryFlags]);
 
   const redo = useCallback(() => {
     const nextSnapshot = redoRef.current.pop();
@@ -928,8 +1506,8 @@ function BoardApp() {
     loadObjects(objects);
     sendReplaceOperation(objects);
     updateHistoryFlags();
-    scheduleAnalysis();
-  }, [loadObjects, scheduleAnalysis, sendReplaceOperation, updateHistoryFlags]);
+    scheduleBoardRefresh();
+  }, [loadObjects, scheduleBoardRefresh, sendReplaceOperation, updateHistoryFlags]);
 
   const exportPng = useCallback(() => {
     const canvas = fabricRef.current;
@@ -948,6 +1526,27 @@ function BoardApp() {
     link.download = `${boardName.trim().replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "whiteboard"}.png`;
     link.click();
   }, [boardName]);
+
+  const downloadBoardExport = useCallback(
+    async (format: "svg" | "pdf") => {
+      const response = await fetch(`${API_URL}/api/boards/${encodeURIComponent(roomId)}/export/${format}`, {
+        headers: authHeader(session.token)
+      });
+
+      if (!response.ok) {
+        showLocalToast(`${format.toUpperCase()} export failed`);
+        return;
+      }
+
+      const blob = await response.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${boardName.trim().replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "whiteboard"}.${format}`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    },
+    [boardName, roomId, session.token, showLocalToast]
+  );
 
   const openDashboard = useCallback(() => {
     const params = new URLSearchParams();
@@ -1000,10 +1599,10 @@ function BoardApp() {
       redoRef.current = [];
       updateHistoryFlags();
       setTemplatesOpen(false);
-      scheduleAnalysis();
+      scheduleBoardRefresh();
       showLocalToast(`${template.name} loaded`);
     },
-    [cloneTemplateObjects, loadObjects, scheduleAnalysis, sendReplaceOperation, showLocalToast, updateHistoryFlags]
+    [cloneTemplateObjects, loadObjects, scheduleBoardRefresh, sendReplaceOperation, showLocalToast, updateHistoryFlags]
   );
 
   const restoreVersion = useCallback(
@@ -1011,9 +1610,10 @@ function BoardApp() {
       const response = await fetch(`${API_URL}/api/boards/${encodeURIComponent(roomId)}/restore/${encodeURIComponent(snapshot.id)}`, {
         method: "POST",
         headers: {
+          ...authHeader(session.token),
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ userId: participant.id })
+        body: JSON.stringify({ userId: participant.id, clientId: clientInstanceId })
       });
 
       if (!response.ok) {
@@ -1032,10 +1632,58 @@ function BoardApp() {
       }
 
       setHistoryOpen(false);
-      scheduleAnalysis();
+      scheduleBoardRefresh();
       showLocalToast(`Restored ${snapshot.label}`);
     },
-    [loadObjects, participant.id, roomId, scheduleAnalysis, showLocalToast, updateHistoryFlags]
+    [clientInstanceId, loadObjects, participant.id, roomId, scheduleBoardRefresh, showLocalToast, updateHistoryFlags]
+  );
+
+  const createCheckpoint = useCallback(async () => {
+    const label = window.prompt("Checkpoint name", `Checkpoint ${new Date().toLocaleTimeString()}`);
+
+    if (!label?.trim()) {
+      return;
+    }
+
+    const response = await fetch(`${API_URL}/api/boards/${encodeURIComponent(roomId)}/checkpoints`, {
+      method: "POST",
+      headers: {
+        ...authHeader(session.token),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ label: label.trim() })
+    });
+
+    if (!response.ok) {
+      showLocalToast("Checkpoint failed");
+      return;
+    }
+
+    showLocalToast("Checkpoint saved");
+  }, [roomId, session.token, showLocalToast]);
+
+  const applyServerOperation = useCallback(
+    (operation: CanvasOperation) => {
+      if (operation.type !== "replace") {
+        return;
+      }
+
+      loadObjects(operation.objects);
+      historyRef.current.push(JSON.stringify(operation.objects));
+      historyRef.current = historyRef.current.slice(-100);
+      redoRef.current = [];
+      updateHistoryFlags();
+      scheduleBoardRefresh();
+    },
+    [loadObjects, scheduleBoardRefresh, updateHistoryFlags]
+  );
+
+  const changePreferredLanguage = useCallback(
+    (language: LanguageCode) => {
+      updateBoardMeta({ preferredLanguage: language });
+      showLocalToast("AI explanation language updated");
+    },
+    [showLocalToast, updateBoardMeta]
   );
 
   const toggleHelpRequested = useCallback(() => {
@@ -1127,9 +1775,14 @@ function BoardApp() {
         onBoardNameChange={setBoardName}
         onDashboardOpen={openDashboard}
         onExportPng={exportPng}
+        onExportPdf={() => void downloadBoardExport("pdf")}
+        onExportSvg={() => void downloadBoardExport("svg")}
         onHelpToggle={toggleHelpRequested}
+        onLeaveRoom={onLeaveRoom}
+        onLogout={onLogout}
         onShare={shareBoard}
         participants={participants}
+        userName={session.user.name}
       />
 
       <main className="workspace">
@@ -1168,6 +1821,10 @@ function BoardApp() {
             <button className="text-button" onClick={() => setQualityOpen(true)} type="button">
               <ClipboardCheck size={16} />
               Quality
+            </button>
+            <button className="text-button" onClick={() => setEnhancementsOpen(true)} type="button">
+              <Sparkles size={16} />
+              AI Lab
             </button>
           </div>
           <div className="comment-layer">
@@ -1218,6 +1875,7 @@ function BoardApp() {
           <TemplateLibrary open={templatesOpen} templates={boardTemplates} onApply={applyTemplate} onClose={() => setTemplatesOpen(false)} />
           <VersionHistory
             onClose={() => setHistoryOpen(false)}
+            onCreateCheckpoint={createCheckpoint}
             onRestore={restoreVersion}
             open={historyOpen}
             versions={boardState?.versions ?? []}
@@ -1234,6 +1892,18 @@ function BoardApp() {
             placing={commentPlacing}
           />
           <QualityReportPanel onClose={() => setQualityOpen(false)} open={qualityOpen} roomId={roomId} />
+          <EnhancementsPanel
+            authToken={session.token}
+            clientId={clientInstanceId}
+            onApplyOperation={applyServerOperation}
+            onClose={() => setEnhancementsOpen(false)}
+            onLanguageChange={changePreferredLanguage}
+            onToast={showLocalToast}
+            open={enhancementsOpen}
+            preferredLanguage={boardState?.preferredLanguage ?? "en"}
+            roomId={roomId}
+            userId={participant.id}
+          />
         </section>
 
         <AiPanel
@@ -1262,5 +1932,89 @@ function BoardApp() {
 }
 
 export default function App() {
-  return isInstructorMode() ? <InstructorDashboard /> : <BoardApp />;
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [authStatus, setAuthStatus] = useState<"loading" | "ready">("loading");
+
+  useEffect(() => {
+    const token = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+
+    if (!token) {
+      setAuthStatus("ready");
+      return;
+    }
+
+    const loadSession = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/auth/me`, {
+          headers: authHeader(token)
+        });
+
+        if (!response.ok) {
+          throw new Error("Session expired");
+        }
+
+        setSession((await response.json()) as AuthSession);
+      } catch {
+        window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+      } finally {
+        setAuthStatus("ready");
+      }
+    };
+
+    void loadSession();
+  }, []);
+
+  const handleLogin = useCallback((nextSession: AuthSession) => {
+    setSession(nextSession);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    const token = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+
+    if (token) {
+      void fetch(`${API_URL}/api/auth/logout`, {
+        method: "POST",
+        headers: authHeader(token)
+      });
+    }
+
+    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    setSession(null);
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
+
+  if (authStatus === "loading") {
+    return (
+      <main className="auth-shell">
+        <div className="auth-panel">
+          <div className="brand-row">
+            <div className="brand-mark">D</div>
+            <h1>Loading session</h1>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
+  if (isInstructorMode()) {
+    return <InstructorDashboard />;
+  }
+
+  const inviteCode = readInviteCode();
+
+  if (inviteCode) {
+    return <InviteAccepting code={inviteCode} session={session} />;
+  }
+
+  const roomId = readRoomId();
+
+  if (!roomId) {
+    return <RoomLobby onLogout={handleLogout} session={session} />;
+  }
+
+  return <BoardApp onLeaveRoom={openLobby} onLogout={handleLogout} roomId={roomId} session={session} />;
 }
