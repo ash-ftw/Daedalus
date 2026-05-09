@@ -1,3 +1,4 @@
+import * as Y from "yjs";
 import type {
   AnalysisResult,
   BoardSummary,
@@ -11,14 +12,16 @@ import type {
   QualityReport,
   SessionSummary
 } from "../../shared/src/types";
+import type { BoardPersistence, BackendStatus, PersistedBoardRoom } from "./storage/types";
 
 interface BoardRoom {
   roomId: string;
   boardName: string;
   classroomId?: string;
   ownerName?: string;
+  tags: string[];
   helpRequested: boolean;
-  objects: Map<string, CanvasObjectPayload>;
+  objects: Y.Map<CanvasObjectPayload>;
   participants: Map<string, Participant>;
   analyses: AnalysisResult[];
   chat: ChatMessage[];
@@ -26,11 +29,86 @@ interface BoardRoom {
   versions: BoardVersionSnapshot[];
   version: number;
   updatedAt: string;
+  doc: Y.Doc;
+  appliedOperationIds: Set<string>;
 }
 
 const rooms = new Map<string, BoardRoom>();
+let persistence: BoardPersistence | null = null;
+let persistenceStatus: BackendStatus = {
+  name: "memory",
+  configured: true,
+  durable: false
+};
 
 const now = () => new Date().toISOString();
+
+export async function configureBoardPersistence(nextPersistence: BoardPersistence) {
+  persistence = nextPersistence;
+  persistenceStatus = nextPersistence.status;
+  await nextPersistence.initialize();
+
+  const persistedRooms = await nextPersistence.loadRooms();
+  rooms.clear();
+  persistedRooms.forEach((room) => rooms.set(room.roomId, fromPersistedRoom(room)));
+}
+
+export function getBoardPersistenceStatus(): BackendStatus {
+  return persistenceStatus;
+}
+
+function persistRoom(room: BoardRoom) {
+  if (!persistence) {
+    return;
+  }
+
+  void persistence.saveRoom(toPersistedRoom(room)).catch((error) => {
+    console.error(`Failed to persist board ${room.roomId}`, error);
+  });
+}
+
+function toPersistedRoom(room: BoardRoom): PersistedBoardRoom {
+  return {
+    roomId: room.roomId,
+    boardName: room.boardName,
+    classroomId: room.classroomId,
+    ownerName: room.ownerName,
+    tags: room.tags,
+    helpRequested: room.helpRequested,
+    objects: Array.from(room.objects.values()),
+    analyses: room.analyses,
+    chat: room.chat,
+    comments: room.comments,
+    versions: room.versions,
+    version: room.version,
+    updatedAt: room.updatedAt
+  };
+}
+
+function fromPersistedRoom(persisted: PersistedBoardRoom): BoardRoom {
+  const doc = new Y.Doc();
+  const objects = doc.getMap<CanvasObjectPayload>("objects");
+  persisted.objects.forEach((object) => objects.set(object.objectId, object));
+
+  return {
+    roomId: persisted.roomId,
+    boardName: persisted.boardName,
+    classroomId: persisted.classroomId,
+    ownerName: persisted.ownerName,
+    tags: persisted.tags ?? [],
+    helpRequested: persisted.helpRequested,
+    objects,
+    participants: new Map(),
+    analyses: persisted.analyses,
+    chat: persisted.chat,
+    comments: persisted.comments,
+    versions: persisted.versions,
+    version: persisted.version,
+    updatedAt: persisted.updatedAt,
+    doc,
+    appliedOperationIds: new Set()
+  };
+}
 
 export function getOrCreateRoom(roomId: string): BoardRoom {
   const existing = rooms.get(roomId);
@@ -38,22 +116,31 @@ export function getOrCreateRoom(roomId: string): BoardRoom {
     return existing;
   }
 
+  const doc = new Y.Doc();
   const room: BoardRoom = {
     roomId,
     boardName: "Untitled board",
+    tags: [],
     helpRequested: false,
-    objects: new Map(),
+    doc,
+    objects: doc.getMap<CanvasObjectPayload>("objects"),
     participants: new Map(),
     analyses: [],
     chat: [],
     comments: [],
     versions: [],
     version: 0,
-    updatedAt: now()
+    updatedAt: now(),
+    appliedOperationIds: new Set()
   };
 
   rooms.set(roomId, room);
+  persistRoom(room);
   return room;
+}
+
+export function roomExists(roomId: string): boolean {
+  return rooms.has(roomId);
 }
 
 export function serializeRoom(room: BoardRoom): BoardSnapshot {
@@ -62,6 +149,7 @@ export function serializeRoom(room: BoardRoom): BoardSnapshot {
     boardName: room.boardName,
     classroomId: room.classroomId,
     ownerName: room.ownerName,
+    tags: room.tags,
     helpRequested: room.helpRequested,
     objects: Array.from(room.objects.values()),
     version: room.version,
@@ -70,7 +158,7 @@ export function serializeRoom(room: BoardRoom): BoardSnapshot {
     analyses: room.analyses.slice(-10),
     chat: room.chat.slice(-50),
     comments: room.comments.slice(-100),
-    versions: room.versions.slice(-10)
+    versions: room.versions.slice(-30)
   };
 }
 
@@ -87,7 +175,7 @@ function createVersionSnapshot(room: BoardRoom, label: string): BoardVersionSnap
   };
 
   room.versions.push(snapshot);
-  room.versions = room.versions.slice(-10);
+  room.versions = room.versions.slice(-30);
   return snapshot;
 }
 
@@ -100,14 +188,51 @@ export function listBoardSummaries(classroomId?: string): BoardSummary[] {
       boardName: room.boardName,
       classroomId: room.classroomId,
       ownerName: room.ownerName,
+      tags: room.tags,
       helpRequested: room.helpRequested,
       objectCount: room.objects.size,
       commentCount: room.comments.filter((comment) => !comment.resolved).length,
       participantCount: room.participants.size,
       version: room.version,
       updatedAt: room.updatedAt,
-      lastAnalysis: room.analyses.at(-1)
+      lastAnalysis: room.analyses.at(-1),
+      previewObjects: Array.from(room.objects.values()).slice(-80)
     }));
+}
+
+export function listBoardSnapshots(classroomId?: string): BoardSnapshot[] {
+  return Array.from(rooms.values())
+    .filter((room) => !classroomId || room.classroomId === classroomId)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .map(serializeRoom);
+}
+
+export function duplicateBoard(sourceRoomId: string, targetRoomId: string, ownerName?: string): BoardSnapshot | null {
+  const source = rooms.get(sourceRoomId);
+
+  if (!source) {
+    return null;
+  }
+
+  const target = getOrCreateRoom(targetRoomId);
+  target.boardName = `${source.boardName} copy`;
+  target.classroomId = source.classroomId;
+  target.ownerName = ownerName ?? source.ownerName;
+  target.tags = source.tags;
+  target.helpRequested = false;
+  target.objects.clear();
+  Array.from(source.objects.values()).forEach((object) => {
+    const clone = {
+      ...JSON.parse(JSON.stringify(object)),
+      objectId: `${targetRoomId}-${crypto.randomUUID()}`
+    } as CanvasObjectPayload;
+    target.objects.set(clone.objectId, clone);
+  });
+  target.version += 1;
+  target.updatedAt = now();
+  createVersionSnapshot(target, "Duplicated board");
+  persistRoom(target);
+  return serializeRoom(target);
 }
 
 function buildQualityReport(room: BoardRoom): QualityReport {
@@ -219,6 +344,7 @@ export function addComment(
 
   room.comments.push(fullComment);
   room.updatedAt = now();
+  persistRoom(room);
   return fullComment;
 }
 
@@ -242,12 +368,13 @@ export function updateComment(
 
   room.comments[index] = updated;
   room.updatedAt = now();
+  persistRoom(room);
   return updated;
 }
 
 export function updateBoardMetadata(
   roomId: string,
-  patch: Partial<Pick<BoardRoom, "boardName" | "classroomId" | "ownerName" | "helpRequested">>
+  patch: Partial<Pick<BoardRoom, "boardName" | "classroomId" | "ownerName" | "tags" | "helpRequested">>
 ): BoardSnapshot {
   const room = getOrCreateRoom(roomId);
 
@@ -263,16 +390,21 @@ export function updateBoardMetadata(
     room.ownerName = patch.ownerName.trim();
   }
 
+  if (Array.isArray(patch.tags)) {
+    room.tags = patch.tags.map((tag) => tag.trim()).filter(Boolean).slice(0, 12);
+  }
+
   if (typeof patch.helpRequested === "boolean") {
     room.helpRequested = patch.helpRequested;
   }
 
   room.updatedAt = now();
+  persistRoom(room);
   return serializeRoom(room);
 }
 
 export function getRoomVersions(roomId: string): BoardVersionSnapshot[] {
-  return getOrCreateRoom(roomId).versions.slice(-10);
+  return getOrCreateRoom(roomId).versions.slice(-30);
 }
 
 export function restoreRoomVersion(roomId: string, snapshotId: string, userId: string): CanvasOperation | null {
@@ -288,6 +420,7 @@ export function restoreRoomVersion(roomId: string, snapshotId: string, userId: s
   room.version += 1;
   room.updatedAt = now();
   createVersionSnapshot(room, `Restored version ${snapshot.version}`);
+  persistRoom(room);
 
   return {
     type: "replace",
@@ -310,6 +443,7 @@ export function joinParticipant(roomId: string, participant: Participant): Parti
   room.participants.set(participant.id, merged);
   room.ownerName = room.ownerName ?? participant.name;
   room.updatedAt = now();
+  persistRoom(room);
   return merged;
 }
 
@@ -356,40 +490,51 @@ export function removeParticipant(roomId: string, participantId: string): Partic
 
 export function applyCanvasOperation(roomId: string, operation: CanvasOperation): CanvasOperation {
   const room = getOrCreateRoom(roomId);
+
+  if (operation.operationId && room.appliedOperationIds.has(operation.operationId)) {
+    return {
+      ...operation,
+      boardVersion: room.version,
+      duplicate: true
+    };
+  }
+
   const boardVersion = room.version + 1;
   room.version = boardVersion;
   room.updatedAt = now();
 
-  if (operation.type === "upsert") {
-    room.objects.set(operation.object.objectId, operation.object);
-    createVersionSnapshot(room, `Version ${boardVersion}`);
-    return {
-      ...operation,
-      boardVersion
-    };
-  }
+  room.doc.transact(() => {
+    if (operation.type === "upsert") {
+      const existing = room.objects.get(operation.object.objectId);
+      room.objects.set(operation.object.objectId, {
+        ...(existing ?? {}),
+        ...operation.object,
+        objectId: operation.object.objectId
+      });
+      return;
+    }
 
-  if (operation.type === "delete") {
-    room.objects.delete(operation.objectId);
-    createVersionSnapshot(room, `Version ${boardVersion}`);
-    return {
-      ...operation,
-      boardVersion
-    };
-  }
+    if (operation.type === "delete") {
+      room.objects.delete(operation.objectId);
+      return;
+    }
 
-  if (operation.type === "replace") {
+    if (operation.type === "replace") {
+      room.objects.clear();
+      operation.objects.forEach((object) => room.objects.set(object.objectId, object));
+      return;
+    }
+
     room.objects.clear();
-    operation.objects.forEach((object) => room.objects.set(object.objectId, object));
-    createVersionSnapshot(room, `Version ${boardVersion}`);
-    return {
-      ...operation,
-      boardVersion
-    };
+  }, operation.operationId ?? operation.userId);
+
+  if (operation.operationId) {
+    room.appliedOperationIds.add(operation.operationId);
+    room.appliedOperationIds = new Set(Array.from(room.appliedOperationIds).slice(-500));
   }
 
-  room.objects.clear();
   createVersionSnapshot(room, `Version ${boardVersion}`);
+  persistRoom(room);
   return {
     ...operation,
     boardVersion
@@ -401,6 +546,7 @@ export function addAnalysis(roomId: string, analysis: AnalysisResult): AnalysisR
   room.analyses.push(analysis);
   room.analyses = room.analyses.slice(-30);
   room.updatedAt = now();
+  persistRoom(room);
   return analysis;
 }
 
@@ -409,6 +555,7 @@ export function addChatMessage(roomId: string, message: ChatMessage): ChatMessag
   room.chat.push(message);
   room.chat = room.chat.slice(-100);
   room.updatedAt = now();
+  persistRoom(room);
   return message;
 }
 

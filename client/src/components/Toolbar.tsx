@@ -3,6 +3,7 @@ import {
   Diamond,
   Eraser,
   Grid2X2,
+  Group,
   Hand,
   MousePointer2,
   MoveRight,
@@ -11,7 +12,8 @@ import {
   Square,
   StickyNote,
   Type,
-  Undo2
+  Undo2,
+  Ungroup
 } from "lucide-react";
 import type { DrawingTool } from "../../../shared/src/types";
 
@@ -28,8 +30,10 @@ interface ToolbarProps {
   onFillColorChange: (color: string) => void;
   onStrokeWidthChange: (width: number) => void;
   onGridToggle: () => void;
+  onGroup: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  onUngroup: () => void;
 }
 
 const tools: Array<{ tool: DrawingTool; label: string; icon: typeof MousePointer2 }> = [
@@ -55,11 +59,13 @@ export function Toolbar({
   strokeWidth,
   onFillColorChange,
   onGridToggle,
+  onGroup,
   onRedo,
   onStrokeColorChange,
   onStrokeWidthChange,
   onToolChange,
-  onUndo
+  onUndo,
+  onUngroup
 }: ToolbarProps) {
   return (
     <aside className="toolbar" aria-label="Whiteboard tools">
@@ -119,6 +125,12 @@ export function Toolbar({
         </button>
         <button aria-label="Redo" className="tool-button" disabled={!canRedo} onClick={onRedo} title="Redo" type="button">
           <Redo2 size={18} />
+        </button>
+        <button aria-label="Group selection" className="tool-button" onClick={onGroup} title="Group selection" type="button">
+          <Group size={18} />
+        </button>
+        <button aria-label="Ungroup selection" className="tool-button" onClick={onUngroup} title="Ungroup selection" type="button">
+          <Ungroup size={18} />
         </button>
       </div>
     </aside>

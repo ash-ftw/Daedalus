@@ -1,4 +1,4 @@
-import { Download, LayoutDashboard, LifeBuoy, Share2, Users, Wifi, WifiOff } from "lucide-react";
+import { Copy, Download, LayoutDashboard, LifeBuoy, Send, Share2, Tags, Users, Wifi, WifiOff } from "lucide-react";
 import type { Participant } from "../../../shared/src/types";
 import type { ConnectionStatus } from "../hooks/useBoardSocket";
 
@@ -8,11 +8,17 @@ interface TopBarProps {
   connectionStatus: ConnectionStatus;
   helpRequested: boolean;
   participants: Participant[];
+  tags: string[];
   onBoardNameChange: (name: string) => void;
   onDashboardOpen: () => void;
+  onDuplicate: () => void;
   onExportPng: () => void;
+  onExportPdf: () => void;
+  onExportSvg: () => void;
   onHelpToggle: () => void;
   onShare: () => void;
+  onShareSlack: () => void;
+  onTagsChange: (tags: string[]) => void;
 }
 
 export function TopBar({
@@ -21,11 +27,17 @@ export function TopBar({
   connectionStatus,
   helpRequested,
   participants,
+  tags,
   onBoardNameChange,
   onDashboardOpen,
+  onDuplicate,
   onExportPng,
+  onExportPdf,
+  onExportSvg,
   onHelpToggle,
-  onShare
+  onShare,
+  onShareSlack,
+  onTagsChange
 }: TopBarProps) {
   const connected = connectionStatus === "connected";
 
@@ -75,9 +87,29 @@ export function TopBar({
         <Share2 size={16} />
         Share
       </button>
+      <button className="text-button" onClick={() => onTagsChange(window.prompt("Board tags, comma separated", tags.join(", "))?.split(",") ?? tags)} type="button">
+        <Tags size={16} />
+        Tags
+      </button>
+      <button className="text-button" onClick={onDuplicate} type="button">
+        <Copy size={16} />
+        Duplicate
+      </button>
+      <button className="text-button" onClick={onShareSlack} type="button">
+        <Send size={16} />
+        Slack
+      </button>
       <button className="text-button primary" onClick={onExportPng} type="button">
         <Download size={16} />
-        Export PNG
+        PNG
+      </button>
+      <button className="text-button" onClick={onExportSvg} type="button">
+        <Download size={16} />
+        SVG
+      </button>
+      <button className="text-button" onClick={onExportPdf} type="button">
+        <Download size={16} />
+        PDF
       </button>
     </header>
   );

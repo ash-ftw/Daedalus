@@ -9,6 +9,7 @@ import { TemplateLibrary } from "./components/TemplateLibrary";
 import { Toolbar } from "./components/Toolbar";
 import { TopBar } from "./components/TopBar";
 import { VersionHistory } from "./components/VersionHistory";
+import { fetchWithAuth } from "./auth";
 import { API_URL, useBoardSocket, type ToastMessage } from "./hooks/useBoardSocket";
 import { boardTemplates } from "../../shared/src/templates";
 import type {
@@ -33,6 +34,79 @@ type FabricObjectWithMeta = fabric.Object & {
 };
 
 const nowIso = () => new Date().toISOString();
+const fileSlug = (value: string) => value.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "whiteboard";
+
+function downloadBlob(blob: Blob, filename: string) {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function dataUrlBytes(dataUrl: string) {
+  const base64 = dataUrl.split(",")[1] ?? "";
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes;
+}
+
+function imagePdfBlob(jpegDataUrl: string, width: number, height: number) {
+  const encoder = new TextEncoder();
+  const imageBytes = dataUrlBytes(jpegDataUrl);
+  const chunks: Uint8Array[] = [];
+  const offsets: number[] = [];
+  let length = 0;
+
+  const write = (chunk: string | Uint8Array) => {
+    const bytes = typeof chunk === "string" ? encoder.encode(chunk) : chunk;
+    chunks.push(bytes);
+    length += bytes.length;
+  };
+  const object = (id: number, body: string) => {
+    offsets[id] = length;
+    write(`${id} 0 obj\n${body}\nendobj\n`);
+  };
+
+  write("%PDF-1.4\n");
+  object(1, "<< /Type /Catalog /Pages 2 0 R >>");
+  object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  object(
+    3,
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${Math.round(width)} ${Math.round(height)}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`
+  );
+  offsets[4] = length;
+  write(
+    `4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${Math.round(width)} /Height ${Math.round(
+      height
+    )} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imageBytes.length} >>\nstream\n`
+  );
+  write(imageBytes);
+  write("\nendstream\nendobj\n");
+  const content = `q\n${Math.round(width)} 0 0 ${Math.round(height)} 0 0 cm\n/Im0 Do\nQ`;
+  object(5, `<< /Length ${encoder.encode(content).length} >>\nstream\n${content}\nendstream`);
+
+  const xrefStart = length;
+  write("xref\n0 6\n0000000000 65535 f \n");
+  for (let id = 1; id <= 5; id += 1) {
+    write(`${String(offsets[id]).padStart(10, "0")} 00000 n \n`);
+  }
+  write(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`);
+
+  const output = new Uint8Array(length);
+  let offset = 0;
+  chunks.forEach((chunk) => {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  });
+
+  return new Blob([output.buffer as ArrayBuffer], { type: "application/pdf" });
+}
 
 function ensureRoomId() {
   const params = new URLSearchParams(window.location.search);
@@ -56,13 +130,21 @@ function isInstructorMode() {
   return new URLSearchParams(window.location.search).get("mode") === "instructor";
 }
 
+function isInstructorReview() {
+  return new URLSearchParams(window.location.search).get("instructor") === "1";
+}
+
 function createParticipant(): Participant {
+  const instructorReview = isInstructorReview();
   const stored = window.localStorage.getItem("daedalus-participant");
 
   if (stored) {
     const parsed = JSON.parse(stored) as Participant;
     return {
       ...parsed,
+      name: instructorReview ? "Instructor" : parsed.name,
+      color: instructorReview ? "#dc2626" : parsed.color,
+      role: instructorReview ? "instructor" : parsed.role,
       tool: "select",
       online: true,
       lastActiveAt: nowIso()
@@ -72,9 +154,9 @@ function createParticipant(): Participant {
   const id = crypto.randomUUID();
   const participant: Participant = {
     id,
-    name: `Guest ${id.slice(0, 4)}`,
-    color: PARTICIPANT_COLORS[Math.floor(Math.random() * PARTICIPANT_COLORS.length)],
-    role: "owner",
+    name: instructorReview ? "Instructor" : `Guest ${id.slice(0, 4)}`,
+    color: instructorReview ? "#dc2626" : PARTICIPANT_COLORS[Math.floor(Math.random() * PARTICIPANT_COLORS.length)],
+    role: instructorReview ? "instructor" : "owner",
     tool: "select",
     online: true,
     joinedAt: nowIso(),
@@ -114,8 +196,9 @@ function BoardApp() {
   const didLoadInitialBoardRef = useRef(false);
 
   const [boardName, setBoardName] = useState("Collaborative AI Whiteboard");
+  const [boardTags, setBoardTags] = useState<string[]>([]);
   const [currentTool, setCurrentTool] = useState<DrawingTool>("select");
-  const [strokeColor, setStrokeColor] = useState("#1f2937");
+  const [strokeColor, setStrokeColor] = useState(isInstructorReview() ? "#dc2626" : "#1f2937");
   const [fillColor, setFillColor] = useState("#ffffff");
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [gridEnabled, setGridEnabled] = useState(true);
@@ -200,11 +283,11 @@ function BoardApp() {
     }
 
     const timeoutId = window.setTimeout(() => {
-      updateBoardMeta({ boardName, classroomId });
+      updateBoardMeta({ boardName, classroomId, tags: boardTags });
     }, 700);
 
     return () => window.clearTimeout(timeoutId);
-  }, [boardName, classroomId, updateBoardMeta]);
+  }, [boardName, boardTags, classroomId, updateBoardMeta]);
 
   const serializeObjects = useCallback(() => {
     const canvas = fabricRef.current;
@@ -827,6 +910,7 @@ function BoardApp() {
     }
 
     setBoardName(boardState.boardName === "Untitled board" ? "Collaborative AI Whiteboard" : boardState.boardName);
+    setBoardTags(boardState.tags ?? []);
     loadObjects(boardState.objects);
     historyRef.current = [JSON.stringify(boardState.objects)];
     redoRef.current = [];
@@ -841,6 +925,13 @@ function BoardApp() {
 
     setBoardName((current) => (current === boardState.boardName ? current : boardState.boardName));
   }, [boardState?.boardName]);
+
+  useEffect(() => {
+    setBoardTags((current) => {
+      const incoming = boardState?.tags ?? [];
+      return JSON.stringify(current) === JSON.stringify(incoming) ? current : incoming;
+    });
+  }, [boardState?.tags]);
 
   useEffect(() => {
     const canvas = fabricRef.current;
@@ -931,6 +1022,44 @@ function BoardApp() {
     scheduleAnalysis();
   }, [loadObjects, scheduleAnalysis, sendReplaceOperation, updateHistoryFlags]);
 
+  const groupSelection = useCallback(() => {
+    const canvas = fabricRef.current;
+    const active = canvas?.getActiveObject();
+
+    if (!canvas || !(active instanceof fabric.ActiveSelection)) {
+      showLocalToast("Select multiple objects first");
+      return;
+    }
+
+    const group = active.toGroup() as FabricObjectWithMeta;
+    group.objectId = group.objectId ?? crypto.randomUUID();
+    group.objectType = "group";
+    group.authorId = participant.id;
+    canvas.requestRenderAll();
+    broadcastObject(group);
+    pushHistory();
+    scheduleAnalysis();
+  }, [broadcastObject, participant.id, pushHistory, scheduleAnalysis, showLocalToast]);
+
+  const ungroupSelection = useCallback(() => {
+    const canvas = fabricRef.current;
+    const active = canvas?.getActiveObject() as FabricObjectWithMeta | undefined;
+
+    if (!canvas || !active || active.type !== "group") {
+      showLocalToast("Select a group first");
+      return;
+    }
+
+    const activeSelection = (active as unknown as fabric.Group).toActiveSelection();
+    activeSelection.getObjects().forEach((object) => {
+      assignMetadata(object, (object as FabricObjectWithMeta).objectType ?? "object");
+      broadcastObject(object);
+    });
+    canvas.requestRenderAll();
+    pushHistory();
+    scheduleAnalysis();
+  }, [assignMetadata, broadcastObject, pushHistory, scheduleAnalysis, showLocalToast]);
+
   const exportPng = useCallback(() => {
     const canvas = fabricRef.current;
 
@@ -943,10 +1072,35 @@ function BoardApp() {
       multiplier: 2,
       enableRetinaScaling: true
     });
-    const link = document.createElement("a");
-    link.href = dataUrl;
-    link.download = `${boardName.trim().replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "whiteboard"}.png`;
-    link.click();
+    downloadBlob(new Blob([dataUrlBytes(dataUrl)], { type: "image/png" }), `${fileSlug(boardName)}.png`);
+  }, [boardName]);
+
+  const exportSvg = useCallback(() => {
+    const canvas = fabricRef.current;
+
+    if (!canvas) {
+      return;
+    }
+
+    downloadBlob(new Blob([canvas.toSVG()], { type: "image/svg+xml" }), `${fileSlug(boardName)}.svg`);
+  }, [boardName]);
+
+  const exportPdf = useCallback(() => {
+    const canvas = fabricRef.current;
+
+    if (!canvas) {
+      return;
+    }
+
+    const multiplier = 2;
+    const dataUrl = canvas.toDataURL({
+      format: "jpeg",
+      quality: 0.92,
+      multiplier,
+      enableRetinaScaling: true
+    });
+
+    downloadBlob(imagePdfBlob(dataUrl, canvas.getWidth() * multiplier, canvas.getHeight() * multiplier), `${fileSlug(boardName)}.pdf`);
   }, [boardName]);
 
   const openDashboard = useCallback(() => {
@@ -966,6 +1120,56 @@ function BoardApp() {
       .then(() => showLocalToast("Share link copied"))
       .catch(() => showLocalToast("Copy failed; use the address bar link"));
   }, [showLocalToast]);
+
+  const updateTags = useCallback(
+    (tags: string[]) => {
+      const normalized = tags.map((tag) => tag.trim()).filter(Boolean).slice(0, 12);
+      setBoardTags(normalized);
+      updateBoardMeta({ tags: normalized });
+    },
+    [updateBoardMeta]
+  );
+
+  const duplicateBoard = useCallback(async () => {
+    const response = await fetchWithAuth(`${API_URL}/api/boards/${encodeURIComponent(roomId)}/duplicate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({})
+    });
+
+    if (!response.ok) {
+      showLocalToast("Duplicate failed");
+      return;
+    }
+
+    const duplicated = (await response.json()) as { roomId: string; classroomId?: string };
+    const params = new URLSearchParams();
+    params.set("room", duplicated.roomId);
+    if (duplicated.classroomId) {
+      params.set("classroom", duplicated.classroomId);
+    }
+    window.location.href = `${window.location.pathname}?${params.toString()}`;
+  }, [roomId, showLocalToast]);
+
+  const shareSnapshotToSlack = useCallback(async () => {
+    const imageDataUrl = serializeCanvasImage();
+
+    if (!imageDataUrl) {
+      return;
+    }
+
+    const response = await fetchWithAuth(`${API_URL}/api/integrations/slack/share`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ roomId, imageDataUrl })
+    });
+
+    showLocalToast(response.ok ? "Slack snapshot shared" : "Slack sharing is not configured");
+  }, [roomId, serializeCanvasImage, showLocalToast]);
 
   const setZoomLevel = useCallback((nextZoomPercent: number) => {
     const canvas = fabricRef.current;
@@ -1008,7 +1212,7 @@ function BoardApp() {
 
   const restoreVersion = useCallback(
     async (snapshot: BoardVersionSnapshot) => {
-      const response = await fetch(`${API_URL}/api/boards/${encodeURIComponent(roomId)}/restore/${encodeURIComponent(snapshot.id)}`, {
+      const response = await fetchWithAuth(`${API_URL}/api/boards/${encodeURIComponent(roomId)}/restore/${encodeURIComponent(snapshot.id)}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -1116,6 +1320,10 @@ function BoardApp() {
   }, [comments, viewportRevision]);
 
   const allToasts = [...toasts, ...localToasts];
+  const canvasObjectCount = fabricRef.current?.getObjects().filter(isSerializableObject).length ?? boardState?.objects.length ?? 0;
+  const canvasSummary = `${boardName}. ${canvasObjectCount} canvas objects. ${
+    analysis ? `${analysis.diagramType} with ${analysis.confidence}% AI confidence. ${analysis.summary}` : "No AI analysis has run yet."
+  }`;
 
   return (
     <div className="app-shell">
@@ -1124,11 +1332,17 @@ function BoardApp() {
         classroomId={classroomId}
         connectionStatus={connectionStatus}
         helpRequested={boardState?.helpRequested ?? false}
+        tags={boardTags}
         onBoardNameChange={setBoardName}
         onDashboardOpen={openDashboard}
+        onDuplicate={duplicateBoard}
         onExportPng={exportPng}
+        onExportPdf={exportPdf}
+        onExportSvg={exportSvg}
         onHelpToggle={toggleHelpRequested}
         onShare={shareBoard}
+        onShareSlack={shareSnapshotToSlack}
+        onTagsChange={updateTags}
         participants={participants}
       />
 
@@ -1141,17 +1355,22 @@ function BoardApp() {
           gridEnabled={gridEnabled}
           onFillColorChange={setFillColor}
           onGridToggle={() => setGridEnabled((enabled) => !enabled)}
+          onGroup={groupSelection}
           onRedo={redo}
           onStrokeColorChange={setStrokeColor}
           onStrokeWidthChange={setStrokeWidth}
           onToolChange={setCurrentTool}
           onUndo={undo}
+          onUngroup={ungroupSelection}
           strokeColor={strokeColor}
           strokeWidth={strokeWidth}
         />
 
         <section className={gridEnabled ? "canvas-stage grid-enabled" : "canvas-stage"} ref={canvasHostRef}>
-          <canvas ref={canvasElementRef} />
+          <p className="visually-hidden" id="canvas-accessibility-summary">
+            {canvasSummary}
+          </p>
+          <canvas aria-describedby="canvas-accessibility-summary" aria-label="Collaborative whiteboard canvas" ref={canvasElementRef} role="img" />
           <div className="phase2-controls">
             <button className="text-button" onClick={() => setTemplatesOpen(true)} type="button">
               <LayoutTemplate size={16} />

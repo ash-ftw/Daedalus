@@ -38,30 +38,37 @@ export type CanvasObjectPayload = Record<string, unknown> & {
   authorId?: string;
 };
 
+interface CanvasOperationMetadata {
+  operationId?: string;
+  clientTimestamp?: string;
+  baseVersion?: number;
+  duplicate?: boolean;
+}
+
 export type CanvasOperation =
   | {
       type: "upsert";
       userId: string;
       boardVersion: number;
       object: CanvasObjectPayload;
-    }
+    } & CanvasOperationMetadata
   | {
       type: "delete";
       userId: string;
       boardVersion: number;
       objectId: string;
-    }
+    } & CanvasOperationMetadata
   | {
       type: "replace";
       userId: string;
       boardVersion: number;
       objects: CanvasObjectPayload[];
-    }
+    } & CanvasOperationMetadata
   | {
       type: "clear";
       userId: string;
       boardVersion: number;
-    };
+    } & CanvasOperationMetadata;
 
 export type DiagramType =
   | "Blank Canvas"
@@ -151,6 +158,7 @@ export interface BoardSnapshot {
   boardName: string;
   classroomId?: string;
   ownerName?: string;
+  tags: string[];
   helpRequested: boolean;
   objects: CanvasObjectPayload[];
   version: number;
@@ -167,6 +175,7 @@ export interface BoardSummary {
   boardName: string;
   classroomId?: string;
   ownerName?: string;
+  tags: string[];
   helpRequested: boolean;
   objectCount: number;
   commentCount: number;
@@ -174,6 +183,7 @@ export interface BoardSummary {
   version: number;
   updatedAt: string;
   lastAnalysis?: AnalysisResult;
+  previewObjects: CanvasObjectPayload[];
 }
 
 export interface BoardTemplate {

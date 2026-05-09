@@ -42,6 +42,7 @@ button {
   display: flex;
   gap: 12px;
   padding: 0 14px;
+  overflow-x: auto;
   z-index: 10;
 }
 
@@ -656,7 +657,9 @@ button {
 .dashboard-shell {
   background: #eef1f4;
   color: #202a33;
+  height: 100vh;
   min-height: 100vh;
+  overflow: auto;
   padding: 20px;
 }
 
@@ -708,6 +711,27 @@ button {
   max-width: 1240px;
 }
 
+.dashboard-board-area {
+  margin: 0 auto;
+  max-width: 1240px;
+}
+
+.dashboard-review-layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(320px, 0.82fr) minmax(480px, 1.18fr);
+  margin: 0 auto;
+  max-width: 1480px;
+  min-height: calc(100vh - 136px);
+}
+
+.dashboard-review-layout .board-grid {
+  align-content: start;
+  margin: 0;
+  max-height: calc(100vh - 136px);
+  overflow-y: auto;
+}
+
 .board-tile {
   background: #ffffff;
   border: 1px solid #d9e1e8;
@@ -737,6 +761,12 @@ button {
   height: 96px;
   justify-items: center;
   padding: 12px;
+}
+
+.board-thumbnail-svg {
+  display: block;
+  height: 100%;
+  width: 100%;
 }
 
 .board-tile-preview span {
@@ -804,6 +834,36 @@ button {
 
 .board-tile-actions {
   justify-content: flex-end;
+}
+
+.review-pane {
+  background: #ffffff;
+  border: 1px solid #d9e1e8;
+  border-radius: 8px;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.review-pane-header {
+  align-items: center;
+  border-bottom: 1px solid #d9e1e8;
+  display: flex;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.review-pane-header strong {
+  display: block;
+  margin-top: 3px;
+}
+
+.review-frame {
+  border: 0;
+  height: 100%;
+  min-height: 620px;
+  width: 100%;
 }
 
 .dashboard-empty {

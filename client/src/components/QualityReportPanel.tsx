@@ -1,6 +1,7 @@
 import { RefreshCw, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { QualityReport } from "../../../shared/src/types";
+import { fetchWithAuth } from "../auth";
 import { API_URL } from "../hooks/useBoardSocket";
 
 interface QualityReportPanelProps {
@@ -17,7 +18,7 @@ export function QualityReportPanel({ open, roomId, onClose }: QualityReportPanel
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/boards/${encodeURIComponent(roomId)}/quality-report`);
+      const response = await fetchWithAuth(`${API_URL}/api/boards/${encodeURIComponent(roomId)}/quality-report`);
       setReport((await response.json()) as QualityReport);
     } finally {
       setLoading(false);

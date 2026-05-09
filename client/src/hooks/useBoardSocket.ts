@@ -10,6 +10,7 @@ import type {
   CursorPayload,
   Participant
 } from "../../../shared/src/types";
+import { getAuthToken } from "../auth";
 
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:3001";
 
@@ -26,6 +27,8 @@ export interface RemoteCursor extends CursorPayload {
 
 export function useBoardSocket(roomId: string, participant: Participant, classroomId?: string) {
   const socketRef = useRef<Socket | null>(null);
+  const boardVersionRef = useRef(0);
+  const pendingOperationsRef = useRef<CanvasOperation[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
   const [boardState, setBoardState] = useState<BoardSnapshot | null>(null);
   const [remoteOperation, setRemoteOperation] = useState<CanvasOperation | null>(null);
@@ -44,8 +47,27 @@ export function useBoardSocket(roomId: string, participant: Participant, classro
     }, 3000);
   }, []);
 
+  const emitOperation = useCallback((socket: Socket, operation: CanvasOperation) => {
+    socket.emit("canvas-operation", operation);
+  }, []);
+
+  const flushPendingOperations = useCallback(() => {
+    const socket = socketRef.current;
+
+    if (!socket?.connected || pendingOperationsRef.current.length === 0) {
+      return;
+    }
+
+    const pending = pendingOperationsRef.current;
+    pendingOperationsRef.current = [];
+    pending.forEach((operation) => emitOperation(socket, operation));
+  }, [emitOperation]);
+
   useEffect(() => {
     const socket = io(API_URL, {
+      auth: {
+        token: getAuthToken()
+      },
       transports: ["websocket", "polling"]
     });
 
@@ -54,6 +76,7 @@ export function useBoardSocket(roomId: string, participant: Participant, classro
     socket.on("connect", () => {
       setConnectionStatus("connected");
       socket.emit("join-board", { roomId, participant, classroomId });
+      window.setTimeout(flushPendingOperations, 0);
     });
 
     socket.on("disconnect", () => {
@@ -65,6 +88,7 @@ export function useBoardSocket(roomId: string, participant: Participant, classro
     });
 
     socket.on("board-state", (state: BoardSnapshot) => {
+      boardVersionRef.current = state.version;
       setBoardState(state);
       setParticipants(state.participants);
       setAnalysis(state.analyses.at(-1) ?? null);
@@ -108,11 +132,15 @@ export function useBoardSocket(roomId: string, participant: Participant, classro
 
     socket.on("toast", pushToast);
 
+    socket.on("spotlight-board", (payload: { boardName?: string }) => {
+      pushToast(`Instructor spotlight: ${payload.boardName ?? "student board"}`);
+    });
+
     return () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [classroomId, participant, pushToast, roomId]);
+  }, [classroomId, flushPendingOperations, participant, pushToast, roomId]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -126,8 +154,22 @@ export function useBoardSocket(roomId: string, participant: Participant, classro
   }, []);
 
   const sendOperation = useCallback((operation: CanvasOperation) => {
-    socketRef.current?.emit("canvas-operation", operation);
-  }, []);
+    const operationWithMetadata: CanvasOperation = {
+      ...operation,
+      operationId: operation.operationId ?? crypto.randomUUID(),
+      clientTimestamp: operation.clientTimestamp ?? new Date().toISOString(),
+      baseVersion: operation.baseVersion ?? boardVersionRef.current
+    };
+    const socket = socketRef.current;
+
+    if (!socket?.connected) {
+      pendingOperationsRef.current = [...pendingOperationsRef.current, operationWithMetadata].slice(-500);
+      setConnectionStatus("offline");
+      return;
+    }
+
+    emitOperation(socket, operationWithMetadata);
+  }, [emitOperation]);
 
   const sendCursor = useCallback((cursor: CursorPayload) => {
     socketRef.current?.emit("cursor-update", cursor);
@@ -168,7 +210,7 @@ export function useBoardSocket(roomId: string, participant: Participant, classro
     socketRef.current?.emit("participant-update", patch);
   }, []);
 
-  const updateBoardMeta = useCallback((patch: { boardName?: string; classroomId?: string; helpRequested?: boolean }) => {
+  const updateBoardMeta = useCallback((patch: { boardName?: string; classroomId?: string; tags?: string[]; helpRequested?: boolean }) => {
     socketRef.current?.emit("board-meta-update", patch);
   }, []);
 
