@@ -73,6 +73,7 @@ const server = http.createServer(app);
 const port = Number(process.env.PORT ?? 3001);
 const clientOrigin = process.env.CLIENT_ORIGIN ?? "http://127.0.0.1:5173";
 const aiProvider = process.env.AI_PROVIDER ?? "mock";
+const hasEnvValue = (value: string | undefined) => Boolean(value?.trim());
 const objectStorage = createObjectStorageFromEnv();
 const boardPersistence = createBoardPersistenceFromEnv(objectStorage);
 const presenceStore = createPresenceStoreFromEnv();
@@ -243,8 +244,8 @@ app.get("/health", (_request, response) => {
     ok: true,
     service: "daedalus-whiteboard-api",
     aiProvider,
-    groqConfigured: Boolean(process.env.GROQ_API_KEY),
-    anthropicConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
+    groqConfigured: hasEnvValue(process.env.GROQ_API_KEY),
+    anthropicConfigured: hasEnvValue(process.env.ANTHROPIC_API_KEY),
     storage: {
       boards: getBoardPersistenceStatus(),
       presence: presenceStore.status,
@@ -702,13 +703,13 @@ async function analyzeBoard(roomId: string, objects: CanvasObjectPayload[], imag
   enforceAiRateLimit(roomId);
   moderateImageDataUrl(imageDataUrl);
 
-  if (aiProvider === "anthropic" && process.env.ANTHROPIC_API_KEY && imageDataUrl) {
+  if (aiProvider === "anthropic" && hasEnvValue(process.env.ANTHROPIC_API_KEY) && imageDataUrl) {
     const analysis = await analyzeCanvasWithAnthropic(roomId, objects, imageDataUrl);
     moderateText(`${analysis.summary} ${analysis.hints.join(" ")} ${analysis.issues.map((issue) => `${issue.title} ${issue.explanation}`).join(" ")}`);
     return analysis;
   }
 
-  if (aiProvider === "groq" && process.env.GROQ_API_KEY && imageDataUrl) {
+  if (aiProvider === "groq" && hasEnvValue(process.env.GROQ_API_KEY) && imageDataUrl) {
     const analysis = await analyzeCanvasWithGroq(roomId, objects, imageDataUrl);
     moderateText(`${analysis.summary} ${analysis.hints.join(" ")} ${analysis.issues.map((issue) => `${issue.title} ${issue.explanation}`).join(" ")}`);
     return analysis;
@@ -717,6 +718,24 @@ async function analyzeBoard(roomId: string, objects: CanvasObjectPayload[], imag
   const analysis = analyzeCanvas(roomId, objects);
   moderateText(analysis.summary);
   return analysis;
+}
+
+function isUserRecoverableAiFailure(message: string) {
+  return !/rate limit|moderation|too large/i.test(message);
+}
+
+function aiFallbackMessage(action: "analysis" | "chat", message: string) {
+  const providerName = aiProvider === "groq" ? "Groq" : aiProvider === "anthropic" ? "Anthropic" : "External AI";
+
+  if (/401|403|api key|unauthorized|forbidden|credentials/i.test(message)) {
+    return `${providerName} credentials were rejected, so Daedalus used local ${action} instead.`;
+  }
+
+  if (/fetch failed|network|ECONN|ENOTFOUND|ETIMEDOUT|AbortError|timeout/i.test(message)) {
+    return `${providerName} is unreachable right now, so Daedalus used local ${action} instead.`;
+  }
+
+  return `${providerName} ${action} is unavailable, so Daedalus used the local fallback.`;
 }
 
 async function answerBoardChat(
@@ -730,13 +749,13 @@ async function answerBoardChat(
   moderateText(prompt);
   moderateImageDataUrl(imageDataUrl);
 
-  if (aiProvider === "anthropic" && process.env.ANTHROPIC_API_KEY && imageDataUrl) {
+  if (aiProvider === "anthropic" && hasEnvValue(process.env.ANTHROPIC_API_KEY) && imageDataUrl) {
     const message = await answerChatWithAnthropic(roomId, authorName, prompt, objects, imageDataUrl);
     moderateText(message.content);
     return message;
   }
 
-  if (aiProvider === "groq" && process.env.GROQ_API_KEY && imageDataUrl) {
+  if (aiProvider === "groq" && hasEnvValue(process.env.GROQ_API_KEY) && imageDataUrl) {
     const message = await answerChatWithGroq(roomId, authorName, prompt, objects, imageDataUrl);
     moderateText(message.content);
     return message;
@@ -773,9 +792,17 @@ app.post("/api/ai/analyze", async (request, response) => {
     io.to(parsed.data.roomId).emit("ai-analysis", analysis);
     response.json(analysis);
   } catch (error) {
-    response.status(502).json({
-      error: error instanceof Error ? error.message : "AI analysis failed"
-    });
+    const message = error instanceof Error ? error.message : "AI analysis failed";
+
+    if (!isUserRecoverableAiFailure(message)) {
+      response.status(502).json({ error: message });
+      return;
+    }
+
+    const analysis = addAnalysis(parsed.data.roomId, analyzeCanvas(parsed.data.roomId, parsed.data.objects as CanvasObjectPayload[]));
+    io.to(parsed.data.roomId).emit("ai-analysis", analysis);
+    response.setHeader("X-Daedalus-AI-Fallback", aiFallbackMessage("analysis", message));
+    response.json(analysis);
   }
 });
 
@@ -812,7 +839,17 @@ app.post("/api/ai/analyze/stream", async (request, response) => {
     io.to(parsed.data.roomId).emit("ai-analysis", analysis);
     response.write(`event: analysis\ndata: ${JSON.stringify(analysis)}\n\n`);
   } catch (error) {
-    response.write(`event: error\ndata: ${JSON.stringify({ error: error instanceof Error ? error.message : "AI analysis failed" })}\n\n`);
+    const message = error instanceof Error ? error.message : "AI analysis failed";
+
+    if (!isUserRecoverableAiFailure(message)) {
+      response.write(`event: error\ndata: ${JSON.stringify({ error: message })}\n\n`);
+      return;
+    }
+
+    const analysis = addAnalysis(parsed.data.roomId, analyzeCanvas(parsed.data.roomId, parsed.data.objects as CanvasObjectPayload[]));
+    io.to(parsed.data.roomId).emit("ai-analysis", analysis);
+    response.write(`event: status\ndata: ${JSON.stringify({ status: "fallback", message: aiFallbackMessage("analysis", message) })}\n\n`);
+    response.write(`event: analysis\ndata: ${JSON.stringify(analysis)}\n\n`);
   } finally {
     response.end();
   }
@@ -1277,14 +1314,14 @@ io.on("connection", (socket) => {
         ack?.(analysis);
       } catch (error) {
         const message = error instanceof Error ? error.message : "AI analysis failed";
-        if (/rate limit|moderation|too large/i.test(message)) {
+        if (!isUserRecoverableAiFailure(message)) {
           io.to(roomId).emit("toast", message);
           ack?.(null);
           return;
         }
 
         const fallback = addAnalysis(roomId, analyzeCanvas(roomId, objects));
-        io.to(roomId).emit("toast", `${aiProvider} analysis failed: ${message}`);
+        io.to(roomId).emit("toast", aiFallbackMessage("analysis", message));
         io.to(roomId).emit("ai-analysis", fallback);
         ack?.(fallback);
       }
@@ -1333,13 +1370,13 @@ io.on("connection", (socket) => {
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : "AI chat failed";
-        if (/rate limit|moderation|too large/i.test(message)) {
+        if (!isUserRecoverableAiFailure(message)) {
           io.to(roomId).emit("toast", message);
           return;
         }
 
         aiMessage = addChatMessage(roomId, answerChat(roomId, payload.authorName, payload.content, payload.objects ?? getRoomObjects(roomId)));
-        io.to(roomId).emit("toast", `${aiProvider} chat failed: ${message}`);
+        io.to(roomId).emit("toast", aiFallbackMessage("chat", message));
       }
 
       io.to(roomId).emit("chat-message", aiMessage);

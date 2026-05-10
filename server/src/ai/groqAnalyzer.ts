@@ -95,7 +95,7 @@ function extractJson(content: string) {
 }
 
 async function groqCompletion(body: unknown) {
-  const apiKey = process.env.GROQ_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY?.trim();
 
   if (!apiKey) {
     throw new Error("GROQ_API_KEY is not configured");

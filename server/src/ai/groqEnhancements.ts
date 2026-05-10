@@ -87,7 +87,7 @@ const responseCache = new Map<string, CacheEntry<unknown>>();
 const requestTimestamps: number[] = [];
 
 function groqEnhancementsEnabled() {
-  return process.env.AI_PROVIDER === "groq" && Boolean(process.env.GROQ_API_KEY);
+  return process.env.AI_PROVIDER === "groq" && Boolean(process.env.GROQ_API_KEY?.trim());
 }
 
 function cacheTtlMs() {
@@ -190,10 +190,16 @@ async function groqJson<T>(feature: string, payload: unknown, prompt: string, sc
   const timeoutId = setTimeout(() => controller.abort(), 14_000);
 
   try {
+    const apiKey = process.env.GROQ_API_KEY?.trim();
+
+    if (!apiKey) {
+      return null;
+    }
+
     const response = await fetch(GROQ_CHAT_COMPLETIONS_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
