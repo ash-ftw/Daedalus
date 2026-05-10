@@ -172,6 +172,10 @@ function isSerializableObject(object: fabric.Object) {
   return objectWithMeta.objectType !== "analysis-highlight";
 }
 
+function isPlacementTool(tool: DrawingTool) {
+  return ["rectangle", "ellipse", "diamond", "text", "sticky"].includes(tool);
+}
+
 function objectById(canvas: fabric.Canvas, objectId: string) {
   return canvas.getObjects().find((object) => (object as FabricObjectWithMeta).objectId === objectId) as
     | FabricObjectWithMeta
@@ -421,7 +425,7 @@ function BoardApp() {
       objectWithMeta.authorId = participant.id;
       object.set({
         strokeUniform: true,
-        selectable: currentToolRef.current === "select"
+        selectable: currentToolRef.current === "select" || isPlacementTool(currentToolRef.current)
       });
       return objectWithMeta;
     },
@@ -552,6 +556,9 @@ function BoardApp() {
           "sticky"
         );
       }
+
+      currentToolRef.current = "select";
+      setCurrentTool("select");
     },
     [addObjectAndBroadcast]
   );
@@ -694,8 +701,20 @@ function BoardApp() {
     };
 
     const handleMouseDown = (event: fabric.IEvent<MouseEvent>) => {
-      updateSelectionMode();
       const tool = currentToolRef.current;
+      const existingTarget = canvas.findTarget(event.e, false) as FabricObjectWithMeta | undefined;
+
+      if (isPlacementTool(tool) && existingTarget && isSerializableObject(existingTarget)) {
+        currentToolRef.current = "select";
+        setCurrentTool("select");
+        existingTarget.selectable = true;
+        existingTarget.evented = true;
+        canvas.setActiveObject(existingTarget);
+        canvas.requestRenderAll();
+        return;
+      }
+
+      updateSelectionMode();
       const pointer = canvas.getPointer(event.e);
 
       if (commentPlacingRef.current) {
@@ -752,7 +771,7 @@ function BoardApp() {
         return;
       }
 
-      if (["rectangle", "ellipse", "diamond", "text", "sticky"].includes(tool)) {
+      if (isPlacementTool(tool)) {
         createShapeAt(tool, new fabric.Point(pointer.x, pointer.y));
         return;
       }
