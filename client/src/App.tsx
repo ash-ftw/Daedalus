@@ -169,11 +169,92 @@ function createParticipant(): Participant {
 
 function isSerializableObject(object: fabric.Object) {
   const objectWithMeta = object as FabricObjectWithMeta;
-  return objectWithMeta.objectType !== "analysis-highlight";
+  return objectWithMeta.objectType !== "analysis-highlight" && object.type !== "activeSelection";
 }
 
 function isPlacementTool(tool: DrawingTool) {
   return ["rectangle", "ellipse", "diamond", "text", "sticky"].includes(tool);
+}
+
+function serializablePaint(value: fabric.Object["fill"]) {
+  return typeof value === "string" ? value : undefined;
+}
+
+function fallbackObjectPayload(object: fabric.Object): CanvasObjectPayload | null {
+  const objectWithMeta = object as FabricObjectWithMeta;
+
+  if (!objectWithMeta.objectId) {
+    return null;
+  }
+
+  const payload: CanvasObjectPayload = {
+    objectId: objectWithMeta.objectId,
+    objectType: objectWithMeta.objectType ?? object.type ?? "object",
+    authorId: objectWithMeta.authorId,
+    type: object.type,
+    left: object.left ?? 0,
+    top: object.top ?? 0,
+    width: object.width ?? 0,
+    height: object.height ?? 0,
+    scaleX: object.scaleX ?? 1,
+    scaleY: object.scaleY ?? 1,
+    angle: object.angle ?? 0,
+    fill: serializablePaint(object.fill),
+    stroke: serializablePaint(object.stroke),
+    strokeWidth: object.strokeWidth ?? 1,
+    strokeUniform: object.strokeUniform ?? true,
+    opacity: object.opacity ?? 1
+  };
+
+  if (object instanceof fabric.Ellipse) {
+    payload.rx = object.rx ?? 0;
+    payload.ry = object.ry ?? 0;
+  }
+
+  if (object instanceof fabric.Rect) {
+    payload.rx = object.rx ?? 0;
+    payload.ry = object.ry ?? 0;
+  }
+
+  if (object instanceof fabric.Line) {
+    payload.x1 = object.x1 ?? 0;
+    payload.y1 = object.y1 ?? 0;
+    payload.x2 = object.x2 ?? 0;
+    payload.y2 = object.y2 ?? 0;
+  }
+
+  if (object instanceof fabric.Polygon) {
+    payload.points = object.points ?? [];
+  }
+
+  if (object instanceof fabric.Text) {
+    payload.text = object.text ?? "";
+    payload.fontFamily = object.fontFamily;
+    payload.fontSize = object.fontSize;
+    payload.fontWeight = object.fontWeight;
+    payload.fontStyle = object.fontStyle;
+    payload.textAlign = object.textAlign;
+  }
+
+  if (object instanceof fabric.Path && Array.isArray(object.path)) {
+    payload.path = object.path;
+  }
+
+  return payload;
+}
+
+function serializeFabricObject(object: fabric.Object): CanvasObjectPayload | null {
+  if (!isSerializableObject(object)) {
+    return null;
+  }
+
+  try {
+    object.setCoords();
+    return object.toObject(FABRIC_CUSTOM_PROPS) as CanvasObjectPayload;
+  } catch (error) {
+    console.warn("Falling back to minimal Fabric object serialization", error);
+    return fallbackObjectPayload(object);
+  }
 }
 
 function objectById(canvas: fabric.Canvas, objectId: string) {
@@ -310,8 +391,9 @@ function BoardApp() {
           objectWithMeta.objectId = crypto.randomUUID();
         }
 
-        return object.toObject(FABRIC_CUSTOM_PROPS) as CanvasObjectPayload;
-      });
+        return serializeFabricObject(object);
+      })
+      .filter((object): object is CanvasObjectPayload => Boolean(object));
   }, []);
 
   const serializeCanvasImage = useCallback(() => {
@@ -440,11 +522,17 @@ function BoardApp() {
         return;
       }
 
+      const payload = serializeFabricObject(object);
+
+      if (!payload) {
+        return;
+      }
+
       sendOperation({
         type: "upsert",
         userId: participant.id,
         boardVersion: 0,
-        object: object.toObject(FABRIC_CUSTOM_PROPS) as CanvasObjectPayload
+        object: payload
       });
     },
     [participant.id, sendOperation]
