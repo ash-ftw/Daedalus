@@ -4,8 +4,74 @@ export type DrawingTool =
   | "pen"
   | "eraser"
   | "rectangle"
+  | "rounded-rectangle"
+  | "square"
   | "ellipse"
   | "diamond"
+  | "triangle"
+  | "pentagon"
+  | "octagon"
+  | "plus-shape"
+  | "cross"
+  | "star"
+  | "callout"
+  | "cube"
+  | "folder"
+  | "table"
+  | "note"
+  | "double-document"
+  | "card"
+  | "tape"
+  | "terminator"
+  | "parallelogram"
+  | "document"
+  | "hexagon"
+  | "trapezoid"
+  | "predefined-process"
+  | "internal-storage"
+  | "manual-input"
+  | "stored-data"
+  | "delay"
+  | "display"
+  | "off-page-connector"
+  | "sort"
+  | "merge"
+  | "collate"
+  | "summing-junction"
+  | "or-junction"
+  | "database"
+  | "cloud"
+  | "actor"
+  | "uml-class"
+  | "uml-interface"
+  | "uml-note"
+  | "uml-object"
+  | "component"
+  | "lifeline"
+  | "activation"
+  | "package"
+  | "er-entity"
+  | "weak-entity"
+  | "associative-entity"
+  | "er-attribute"
+  | "key-attribute"
+  | "derived-attribute"
+  | "multivalue-attribute"
+  | "er-relationship"
+  | "identifying-relationship"
+  | "state-start"
+  | "state-end"
+  | "resistor"
+  | "capacitor"
+  | "ground"
+  | "battery"
+  | "logic-and"
+  | "logic-or"
+  | "logic-not"
+  | "logic-xor"
+  | "switch"
+  | "led"
+  | "inductor"
   | "connector"
   | "text"
   | "sticky";
@@ -194,6 +260,19 @@ export interface GeneratedArtifact {
   title: string;
   language: string;
   content: string;
+  warnings: string[];
+  createdAt: string;
+}
+
+export interface GeneratedDiagram {
+  id: string;
+  roomId: string;
+  provider: "mock" | "anthropic" | "groq";
+  prompt: string;
+  title: string;
+  diagramType: DiagramType;
+  summary: string;
+  objects: CanvasObjectPayload[];
   warnings: string[];
   createdAt: string;
 }

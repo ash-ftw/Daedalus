@@ -1,4 +1,4 @@
-import { AlertTriangle, Bot, CheckCircle2, Lightbulb, MessageSquare, ScanSearch, X } from "lucide-react";
+import { AlertTriangle, Bot, CheckCircle2, Lightbulb, MessageSquare, ScanSearch, Sparkles, X } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { AnalysisIssue, AnalysisResult, ChatMessage } from "../../../shared/src/types";
@@ -9,14 +9,16 @@ interface AiPanelProps {
   dismissedIssues: Set<string>;
   highlightEnabled: boolean;
   isAnalyzing: boolean;
+  isGeneratingDiagram: boolean;
   onAcceptSuggestion: (issue: AnalysisIssue) => void;
   onAnalyze: () => void;
   onChat: (message: string) => void;
+  onGenerateDiagram: (prompt: string) => Promise<void>;
   onDismissIssue: (issueId: string) => void;
   onToggleHighlight: () => void;
 }
 
-type PanelTab = "explain" | "correct" | "chat";
+type PanelTab = "build" | "explain" | "correct" | "chat";
 
 const severityLabel = {
   error: "Error",
@@ -30,18 +32,33 @@ export function AiPanel({
   dismissedIssues,
   highlightEnabled,
   isAnalyzing,
+  isGeneratingDiagram,
   onAcceptSuggestion,
   onAnalyze,
   onChat,
+  onGenerateDiagram,
   onDismissIssue,
   onToggleHighlight
 }: AiPanelProps) {
-  const [tab, setTab] = useState<PanelTab>("explain");
+  const [tab, setTab] = useState<PanelTab>("build");
   const [draft, setDraft] = useState("");
+  const [diagramPrompt, setDiagramPrompt] = useState("");
   const visibleIssues = useMemo(
     () => (analysis?.issues ?? []).filter((issue) => !dismissedIssues.has(issue.id)),
     [analysis?.issues, dismissedIssues]
   );
+
+  const submitDiagramPrompt = async (event: FormEvent) => {
+    event.preventDefault();
+    const prompt = diagramPrompt.trim();
+
+    if (!prompt || isGeneratingDiagram) {
+      return;
+    }
+
+    await onGenerateDiagram(prompt);
+    setDiagramPrompt("");
+  };
 
   const submitChat = (event: FormEvent) => {
     event.preventDefault();
@@ -56,10 +73,10 @@ export function AiPanel({
   };
 
   return (
-    <aside className="ai-panel" aria-label="AI explainer panel">
+    <aside className="ai-panel" aria-label="AI panel">
       <div className="panel-header">
         <div>
-          <span className="panel-kicker">AI Explainer</span>
+          <span className="panel-kicker">AI Studio</span>
           <h2>{analysis?.diagramType ?? "Waiting for canvas"}</h2>
         </div>
         <button className="icon-button" onClick={onAnalyze} title="Analyze now" type="button">
@@ -68,6 +85,9 @@ export function AiPanel({
       </div>
 
       <div className="tab-list" role="tablist">
+        <button className={tab === "build" ? "active" : ""} onClick={() => setTab("build")} type="button">
+          Build
+        </button>
         <button className={tab === "explain" ? "active" : ""} onClick={() => setTab("explain")} type="button">
           Explain
         </button>
@@ -81,6 +101,26 @@ export function AiPanel({
       </div>
 
       {isAnalyzing ? <div className="analysis-status">Analyzing current canvas...</div> : null}
+      {isGeneratingDiagram ? <div className="analysis-status">Building diagram...</div> : null}
+
+      {tab === "build" ? (
+        <div className="panel-body">
+          <form className="diagram-build-form" onSubmit={submitDiagramPrompt}>
+            <label htmlFor="diagram-prompt">Prompt</label>
+            <textarea
+              id="diagram-prompt"
+              maxLength={2000}
+              onChange={(event) => setDiagramPrompt(event.target.value)}
+              placeholder="Customer signup flow with email verification and billing decision"
+              value={diagramPrompt}
+            />
+            <button className="wide-button primary" disabled={isGeneratingDiagram || !diagramPrompt.trim()} type="submit">
+              <Sparkles size={16} />
+              {isGeneratingDiagram ? "Building..." : "Build diagram"}
+            </button>
+          </form>
+        </div>
+      ) : null}
 
       {tab === "explain" ? (
         <div className="panel-body">
