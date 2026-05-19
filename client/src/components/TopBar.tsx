@@ -1,6 +1,8 @@
-import { Copy, Download, LayoutDashboard, LifeBuoy, Send, Share2, Tags, Users, Wifi, WifiOff } from "lucide-react";
+import { Copy, Download, LayoutDashboard, LifeBuoy, Moon, Send, Share2, Sun, Tags, Users, Wifi, WifiOff } from "lucide-react";
 import type { Participant } from "../../../shared/src/types";
 import type { ConnectionStatus } from "../hooks/useBoardSocket";
+
+type ThemeMode = "dark" | "light";
 
 interface TopBarProps {
   boardName: string;
@@ -9,6 +11,7 @@ interface TopBarProps {
   helpRequested: boolean;
   participants: Participant[];
   tags: string[];
+  themeMode: ThemeMode;
   onBoardNameChange: (name: string) => void;
   onDashboardOpen: () => void;
   onDuplicate: () => void;
@@ -19,6 +22,7 @@ interface TopBarProps {
   onShare: () => void;
   onShareSlack: () => void;
   onTagsChange: (tags: string[]) => void;
+  onThemeToggle: () => void;
 }
 
 export function TopBar({
@@ -28,6 +32,7 @@ export function TopBar({
   helpRequested,
   participants,
   tags,
+  themeMode,
   onBoardNameChange,
   onDashboardOpen,
   onDuplicate,
@@ -37,7 +42,8 @@ export function TopBar({
   onHelpToggle,
   onShare,
   onShareSlack,
-  onTagsChange
+  onTagsChange,
+  onThemeToggle
 }: TopBarProps) {
   const connected = connectionStatus === "connected";
 
@@ -90,6 +96,10 @@ export function TopBar({
       <button className="text-button" onClick={() => onTagsChange(window.prompt("Board tags, comma separated", tags.join(", "))?.split(",") ?? tags)} type="button">
         <Tags size={16} />
         Tags
+      </button>
+      <button className="text-button" onClick={onThemeToggle} type="button">
+        {themeMode === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+        {themeMode === "dark" ? "Light" : "Dark"}
       </button>
       <button className="text-button" onClick={onDuplicate} type="button">
         <Copy size={16} />

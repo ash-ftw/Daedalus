@@ -92,11 +92,22 @@ export function requireHttpAction(request: Request, response: Response, roomId: 
   const principal = principalFromRequest(request);
 
   if (canAccessBoard(principal, roomId, action)) {
-    return principal;
+    return principal ?? anonymousPrincipal(action);
   }
 
   response.status(principal ? 403 : 401).json({ error: principal ? "Forbidden" : "Authentication required" });
   return null;
+}
+
+function anonymousPrincipal(action: BoardAction): AuthPrincipal {
+  return {
+    sub: "anonymous",
+    name: "Guest",
+    role: action === "instructor" ? "instructor" : "owner",
+    type: "guest",
+    iat: 0,
+    exp: Number.MAX_SAFE_INTEGER
+  };
 }
 
 export function canAccessBoard(principal: AuthPrincipal | null, roomId: string | undefined, action: BoardAction) {

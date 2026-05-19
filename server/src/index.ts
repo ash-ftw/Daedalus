@@ -45,6 +45,7 @@ import {
 import { analyzeCanvasWithGroq, answerChatWithGroq } from "./ai/groqAnalyzer";
 import { analyzeCanvas, answerChat } from "./ai/mockAnalyzer";
 import { analyzeCanvasWithAnthropic, answerChatWithAnthropic } from "./ai/anthropicAnalyzer";
+import { generateDiagramFromPrompt } from "./ai/diagramGenerator";
 import { enforceAiRateLimit, moderateImageDataUrl, moderateText } from "./ai/guardrails";
 import { createBoardPersistenceFromEnv } from "./storage/boardPersistence";
 import { createObjectStorageFromEnv } from "./storage/objectStorage";
@@ -765,6 +766,43 @@ async function answerBoardChat(
   moderateText(message.content);
   return message;
 }
+
+app.post("/api/ai/generate-diagram", async (request, response) => {
+  const parsed = z
+    .object({
+      roomId: z.string().min(1),
+      prompt: z.string().min(3).max(2000),
+      userId: z.string().min(1).default("system")
+    })
+    .safeParse(request.body);
+
+  if (!parsed.success) {
+    response.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  if (!requireHttpAction(request, response, parsed.data.roomId, "write")) {
+    return;
+  }
+
+  try {
+    enforceAiRateLimit(`${parsed.data.roomId}:diagram`);
+    moderateText(parsed.data.prompt);
+
+    const generated = await generateDiagramFromPrompt({
+      roomId: parsed.data.roomId,
+      prompt: parsed.data.prompt.trim(),
+      provider: aiProvider,
+      authorId: parsed.data.userId
+    });
+
+    moderateText(`${generated.title} ${generated.summary} ${generated.warnings.join(" ")}`);
+    response.json(generated);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Diagram generation failed";
+    response.status(/rate limit/i.test(message) ? 429 : 502).json({ error: message });
+  }
+});
 
 app.post("/api/ai/analyze", async (request, response) => {
   const parsed = z

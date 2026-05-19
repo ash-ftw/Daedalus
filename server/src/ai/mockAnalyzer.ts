@@ -33,6 +33,42 @@ function objectText(object: CanvasObjectPayload): string {
   return "";
 }
 
+const flowchartKinds = new Set([
+  "terminator",
+  "parallelogram",
+  "document",
+  "double-document",
+  "hexagon",
+  "trapezoid",
+  "predefined-process",
+  "internal-storage",
+  "manual-input",
+  "stored-data",
+  "delay",
+  "display",
+  "off-page-connector",
+  "sort",
+  "merge",
+  "collate",
+  "summing-junction",
+  "or-junction",
+  "database"
+]);
+const erKinds = new Set([
+  "er-entity",
+  "weak-entity",
+  "associative-entity",
+  "er-attribute",
+  "key-attribute",
+  "derived-attribute",
+  "multivalue-attribute",
+  "er-relationship",
+  "identifying-relationship"
+]);
+const umlKinds = new Set(["uml-class", "uml-interface", "uml-note", "uml-object", "component", "lifeline", "activation", "actor", "package"]);
+const stateKinds = new Set(["state-start", "state-end"]);
+const circuitKinds = new Set(["resistor", "capacitor", "ground", "battery", "logic-and", "logic-or", "logic-not", "logic-xor", "switch", "led", "inductor"]);
+
 function boundsFor(object: CanvasObjectPayload) {
   const left = asNumber(object.left);
   const top = asNumber(object.top);
@@ -58,15 +94,22 @@ function classify(objects: CanvasObjectPayload[]): { diagramType: DiagramType; c
 
   const kinds = objects.map(objectKind);
   const text = objects.map(objectText).join(" ");
-  const hasDiamond = kinds.includes("diamond") || kinds.includes("polygon");
+  const hasDiamond = kinds.includes("diamond") || kinds.includes("polygon") || kinds.includes("er-relationship") || kinds.includes("identifying-relationship");
   const hasConnector = kinds.includes("connector") || kinds.includes("line");
-  const hasRectangle = kinds.includes("rectangle") || kinds.includes("rect");
-  const hasEllipse = kinds.includes("ellipse") || kinds.includes("circle");
+  const hasRectangle = kinds.includes("rectangle") || kinds.includes("rect") || kinds.includes("er-entity") || kinds.includes("weak-entity");
+  const hasEllipse =
+    kinds.includes("ellipse") || kinds.includes("circle") || kinds.includes("er-attribute") || kinds.includes("multivalue-attribute");
   const hasFreehand = kinds.includes("stroke") || kinds.includes("path");
+  const hasFlowchartShape = kinds.some((kind) => flowchartKinds.has(kind));
+  const hasErShape = kinds.some((kind) => erKinds.has(kind));
+  const hasUmlShape = kinds.some((kind) => umlKinds.has(kind));
+  const hasStateShape = kinds.some((kind) => stateKinds.has(kind));
+  const hasCircuitShape = kinds.some((kind) => circuitKinds.has(kind));
+  const hasLogicGateShape = kinds.some((kind) => kind === "logic-and" || kind === "logic-or" || kind === "logic-not" || kind === "logic-xor");
   const hasCircuitVocabulary = ["battery", "resistor", "led", "voltage", "ground", "switch", "r1"].some((term) => text.includes(term));
   const hasStateVocabulary = ["state", "idle", "processing", "complete", "transition", "event"].some((term) => text.includes(term));
 
-  if (text.includes("class") || text.includes("+") || text.includes("private") || text.includes("public")) {
+  if (hasUmlShape || text.includes("class") || text.includes("+") || text.includes("private") || text.includes("public")) {
     return {
       diagramType: "UML Class Diagram",
       confidence: 72,
@@ -74,15 +117,15 @@ function classify(objects: CanvasObjectPayload[]): { diagramType: DiagramType; c
     };
   }
 
-  if (hasCircuitVocabulary) {
+  if (hasCircuitShape || hasCircuitVocabulary) {
     return {
-      diagramType: text.includes("and") || text.includes("or") || text.includes("not") ? "Logic Gate Diagram" : "Basic Circuit Diagram",
+      diagramType: hasLogicGateShape || text.includes("and") || text.includes("or") || text.includes("not") ? "Logic Gate Diagram" : "Basic Circuit Diagram",
       confidence: hasConnector ? 82 : 66,
       summary: "This looks like a circuit-style diagram. I can see electrical labels or components that should be checked for closed paths and clear polarity."
     };
   }
 
-  if (hasStateVocabulary && hasEllipse) {
+  if (hasStateShape || (hasStateVocabulary && hasEllipse)) {
     return {
       diagramType: "State Machine Diagram",
       confidence: hasConnector ? 84 : 70,
@@ -90,7 +133,7 @@ function classify(objects: CanvasObjectPayload[]): { diagramType: DiagramType; c
     };
   }
 
-  if ((text.includes("entity") || text.includes("relationship") || text.includes("attribute")) || (hasDiamond && hasEllipse && hasRectangle)) {
+  if (hasErShape || (text.includes("entity") || text.includes("relationship") || text.includes("attribute")) || (hasDiamond && hasEllipse && hasRectangle)) {
     return {
       diagramType: "ER Diagram - Chen Notation",
       confidence: hasConnector ? 84 : 68,
@@ -98,7 +141,7 @@ function classify(objects: CanvasObjectPayload[]): { diagramType: DiagramType; c
     };
   }
 
-  if (hasDiamond && hasRectangle) {
+  if ((hasDiamond && hasRectangle) || hasFlowchartShape) {
     return {
       diagramType: "Flowchart",
       confidence: hasConnector ? 88 : 74,
@@ -136,10 +179,76 @@ function describeObject(object: CanvasObjectPayload): AnalysisComponent {
     path: "Freehand stroke",
     rectangle: "Process or entity",
     rect: "Process or entity",
+    "rounded-rectangle": "Rounded process",
+    square: "Square",
     ellipse: "Attribute or terminal",
     circle: "Attribute or terminal",
     diamond: "Decision or relationship",
     polygon: "Decision or relationship",
+    triangle: "Triangle",
+    pentagon: "Pentagon",
+    octagon: "Octagon",
+    "plus-shape": "Plus shape",
+    cross: "Cross shape",
+    star: "Star",
+    callout: "Callout",
+    cube: "Cube",
+    folder: "Folder",
+    table: "Table",
+    note: "Note",
+    "double-document": "Multiple documents",
+    card: "Card",
+    tape: "Sequential data",
+    terminator: "Flowchart terminal",
+    parallelogram: "Input/output",
+    document: "Document",
+    hexagon: "Preparation",
+    trapezoid: "Manual operation",
+    "predefined-process": "Predefined process",
+    "internal-storage": "Internal storage",
+    "manual-input": "Manual input",
+    "stored-data": "Stored data",
+    delay: "Delay",
+    display: "Display",
+    "off-page-connector": "Off-page connector",
+    sort: "Sort",
+    merge: "Merge",
+    collate: "Collate",
+    "summing-junction": "Summing junction",
+    "or-junction": "Or junction",
+    database: "Database",
+    cloud: "Cloud node",
+    "er-entity": "ER entity",
+    "weak-entity": "Weak entity",
+    "associative-entity": "Associative entity",
+    "er-attribute": "ER attribute",
+    "key-attribute": "Key attribute",
+    "derived-attribute": "Derived attribute",
+    "multivalue-attribute": "Multivalued attribute",
+    "er-relationship": "ER relationship",
+    "identifying-relationship": "Identifying relationship",
+    "uml-class": "UML class",
+    "uml-interface": "UML interface",
+    "uml-note": "UML note",
+    "uml-object": "UML object",
+    component: "Component",
+    lifeline: "Lifeline",
+    activation: "Activation",
+    actor: "Actor",
+    package: "Package",
+    "state-start": "Initial state",
+    "state-end": "Final state",
+    resistor: "Resistor",
+    capacitor: "Capacitor",
+    ground: "Ground",
+    battery: "Battery",
+    "logic-and": "AND gate",
+    "logic-or": "OR gate",
+    "logic-not": "NOT gate",
+    "logic-xor": "XOR gate",
+    switch: "Switch",
+    led: "LED",
+    inductor: "Inductor",
     connector: "Connector",
     line: "Connector",
     text: "Text label",

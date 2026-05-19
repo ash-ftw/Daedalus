@@ -20,17 +20,117 @@ import type {
   CanvasOperation,
   CursorPayload,
   DrawingTool,
+  GeneratedDiagram,
   Participant
 } from "../../shared/src/types";
 
-const FABRIC_CUSTOM_PROPS = ["objectId", "objectType", "authorId", "excludeFromExport"];
+const FABRIC_CUSTOM_PROPS = [
+  "objectId",
+  "objectType",
+  "authorId",
+  "excludeFromExport",
+  "sourceObjectId",
+  "targetObjectId",
+  "sourceAnchor",
+  "targetAnchor",
+  "attachedToObjectId",
+  "attachedOffsetX",
+  "attachedOffsetY"
+];
 const PARTICIPANT_COLORS = ["#2563eb", "#db2777", "#059669", "#d97706", "#7c3aed", "#0f766e", "#dc2626"];
+type ThemeMode = "dark" | "light";
+const DARK_THEME_STROKE = "#d7dde4";
+const LIGHT_THEME_STROKE = "#1f2937";
+const defaultStrokeForTheme = (theme: ThemeMode) => (theme === "dark" ? DARK_THEME_STROKE : LIGHT_THEME_STROKE);
+const readStoredTheme = (): ThemeMode => (window.localStorage.getItem("daedalus-theme") === "light" ? "light" : "dark");
+const PLACEMENT_TOOLS: DrawingTool[] = [
+  "rectangle",
+  "rounded-rectangle",
+  "square",
+  "ellipse",
+  "diamond",
+  "triangle",
+  "pentagon",
+  "octagon",
+  "plus-shape",
+  "cross",
+  "star",
+  "callout",
+  "cube",
+  "folder",
+  "table",
+  "note",
+  "double-document",
+  "card",
+  "tape",
+  "terminator",
+  "parallelogram",
+  "document",
+  "hexagon",
+  "trapezoid",
+  "predefined-process",
+  "internal-storage",
+  "manual-input",
+  "stored-data",
+  "delay",
+  "display",
+  "off-page-connector",
+  "sort",
+  "merge",
+  "collate",
+  "summing-junction",
+  "or-junction",
+  "database",
+  "cloud",
+  "actor",
+  "uml-class",
+  "uml-interface",
+  "uml-note",
+  "uml-object",
+  "component",
+  "lifeline",
+  "activation",
+  "package",
+  "er-entity",
+  "weak-entity",
+  "associative-entity",
+  "er-attribute",
+  "key-attribute",
+  "derived-attribute",
+  "multivalue-attribute",
+  "er-relationship",
+  "identifying-relationship",
+  "state-start",
+  "state-end",
+  "resistor",
+  "capacitor",
+  "ground",
+  "battery",
+  "logic-and",
+  "logic-or",
+  "logic-not",
+  "logic-xor",
+  "switch",
+  "led",
+  "inductor",
+  "text",
+  "sticky"
+];
+
+type ConnectionAnchor = "top" | "right" | "bottom" | "left" | "top-left" | "top-right" | "bottom-right" | "bottom-left";
 
 type FabricObjectWithMeta = fabric.Object & {
   objectId?: string;
   objectType?: string;
   authorId?: string;
   excludeFromExport?: boolean;
+  sourceObjectId?: string;
+  targetObjectId?: string;
+  sourceAnchor?: ConnectionAnchor;
+  targetAnchor?: ConnectionAnchor;
+  attachedToObjectId?: string;
+  attachedOffsetX?: number;
+  attachedOffsetY?: number;
 };
 
 const nowIso = () => new Date().toISOString();
@@ -173,7 +273,1175 @@ function isSerializableObject(object: fabric.Object) {
 }
 
 function isPlacementTool(tool: DrawingTool) {
-  return ["rectangle", "ellipse", "diamond", "text", "sticky"].includes(tool);
+  return PLACEMENT_TOOLS.includes(tool);
+}
+
+type ShapePaint = {
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+};
+
+function centeredShape(pointer: fabric.Point, width: number, height: number, paint: ShapePaint) {
+  return {
+    left: pointer.x - width / 2,
+    top: pointer.y - height / 2,
+    fill: paint.fill,
+    stroke: paint.stroke,
+    strokeWidth: paint.strokeWidth,
+    strokeUniform: true
+  };
+}
+
+function makePolygon(points: Array<{ x: number; y: number }>, pointer: fabric.Point, width: number, height: number, paint: ShapePaint) {
+  return new fabric.Polygon(points as fabric.Point[], centeredShape(pointer, width, height, paint));
+}
+
+function makePath(path: string, pointer: fabric.Point, width: number, height: number, paint: ShapePaint) {
+  return new fabric.Path(path, {
+    ...centeredShape(pointer, width, height, paint),
+    strokeLineJoin: "round"
+  });
+}
+
+function makeLine(x1: number, y1: number, x2: number, y2: number, paint: ShapePaint) {
+  return new fabric.Line([x1, y1, x2, y2], {
+    stroke: paint.stroke,
+    strokeLineCap: "round",
+    strokeWidth: paint.strokeWidth,
+    strokeUniform: true
+  });
+}
+
+function makeGroup(pointer: fabric.Point, width: number, height: number, objects: fabric.Object[]) {
+  return new fabric.Group(objects, {
+    left: pointer.x - width / 2,
+    top: pointer.y - height / 2
+  });
+}
+
+function makeShapeText(text: string, left: number, top: number, width: number, paint: ShapePaint, fontSize = 14) {
+  return new fabric.Textbox(text, {
+    left,
+    top,
+    width,
+    fill: paint.stroke,
+    fontFamily: "Inter, Arial, sans-serif",
+    fontSize,
+    fontWeight: "700",
+    textAlign: "center"
+  });
+}
+
+function makeDatabase(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 128, 92, [
+    new fabric.Rect({
+      left: 0,
+      top: 15,
+      width: 128,
+      height: 62,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    new fabric.Ellipse({
+      left: 0,
+      top: 0,
+      rx: 64,
+      ry: 16,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    new fabric.Path("M 0 77 C 0 98 128 98 128 77", {
+      left: 0,
+      top: 0,
+      fill: "",
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    })
+  ]);
+}
+
+function makeActor(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 120, 118, [
+    new fabric.Circle({
+      left: 42,
+      top: 0,
+      radius: 18,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    makeLine(60, 36, 60, 78, paint),
+    makeLine(24, 52, 96, 52, paint),
+    makeLine(60, 78, 28, 112, paint),
+    makeLine(60, 78, 92, 112, paint)
+  ]);
+}
+
+function makeUmlClass(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 150, 118, [
+    new fabric.Rect({
+      left: 0,
+      top: 0,
+      width: 150,
+      height: 118,
+      rx: 4,
+      ry: 4,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    makeLine(0, 34, 150, 34, paint),
+    makeLine(0, 74, 150, 74, paint),
+    makeShapeText("Class", 10, 8, 130, paint, 15),
+    makeShapeText("+ attribute", 10, 45, 130, paint, 13),
+    makeShapeText("+ method()", 10, 84, 130, paint, 13)
+  ]);
+}
+
+function makePackage(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 148, 100, [
+    new fabric.Rect({
+      left: 0,
+      top: 18,
+      width: 148,
+      height: 82,
+      rx: 4,
+      ry: 4,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    new fabric.Rect({
+      left: 0,
+      top: 0,
+      width: 58,
+      height: 24,
+      rx: 4,
+      ry: 4,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    })
+  ]);
+}
+
+function makeDoubleRect(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 136, 80, [
+    new fabric.Rect({
+      left: 0,
+      top: 0,
+      width: 136,
+      height: 80,
+      rx: 4,
+      ry: 4,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    new fabric.Rect({
+      left: 7,
+      top: 7,
+      width: 122,
+      height: 66,
+      rx: 3,
+      ry: 3,
+      fill: "rgba(255,255,255,0)",
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    })
+  ]);
+}
+
+function makeDoubleEllipse(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 136, 80, [
+    new fabric.Ellipse({
+      left: 0,
+      top: 0,
+      rx: 68,
+      ry: 40,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    new fabric.Ellipse({
+      left: 8,
+      top: 7,
+      rx: 60,
+      ry: 33,
+      fill: "rgba(255,255,255,0)",
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    })
+  ]);
+}
+
+function makeDoubleDiamond(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 136, 88, [
+    new fabric.Polygon(
+      [
+        { x: 68, y: 0 },
+        { x: 136, y: 44 },
+        { x: 68, y: 88 },
+        { x: 0, y: 44 }
+      ],
+      {
+        left: 0,
+        top: 0,
+        fill: paint.fill,
+        stroke: paint.stroke,
+        strokeWidth: paint.strokeWidth,
+        strokeUniform: true
+      }
+    ),
+    new fabric.Polygon(
+      [
+        { x: 68, y: 10 },
+        { x: 122, y: 44 },
+        { x: 68, y: 78 },
+        { x: 14, y: 44 }
+      ],
+      {
+        left: 0,
+        top: 0,
+        fill: "rgba(255,255,255,0)",
+        stroke: paint.stroke,
+        strokeWidth: paint.strokeWidth,
+        strokeUniform: true
+      }
+    )
+  ]);
+}
+
+function makeStateEnd(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 52, 52, [
+    new fabric.Circle({
+      left: 0,
+      top: 0,
+      radius: 26,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    new fabric.Circle({
+      left: 13,
+      top: 13,
+      radius: 13,
+      fill: paint.stroke,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    })
+  ]);
+}
+
+function makeResistor(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 128, 64, [
+    new fabric.Path("M 0 32 L 24 32 L 32 14 L 48 50 L 64 14 L 80 50 L 96 14 L 104 32 L 128 32", {
+      left: 0,
+      top: 0,
+      fill: "",
+      stroke: paint.stroke,
+      strokeLineCap: "round",
+      strokeLineJoin: "round",
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    })
+  ]);
+}
+
+function makeCapacitor(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 118, 66, [
+    makeLine(0, 33, 42, 33, paint),
+    makeLine(42, 10, 42, 56, paint),
+    makeLine(76, 10, 76, 56, paint),
+    makeLine(76, 33, 118, 33, paint)
+  ]);
+}
+
+function makeGround(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 84, 74, [
+    makeLine(42, 0, 42, 28, paint),
+    makeLine(12, 28, 72, 28, paint),
+    makeLine(22, 46, 62, 46, paint),
+    makeLine(32, 64, 52, 64, paint)
+  ]);
+}
+
+function makeBattery(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 132, 76, [
+    makeLine(0, 38, 42, 38, paint),
+    makeLine(42, 14, 42, 62, paint),
+    makeLine(66, 4, 66, 72, paint),
+    makeLine(66, 38, 132, 38, paint),
+    makeShapeText("-", 18, 12, 18, paint, 16),
+    makeShapeText("+", 82, 8, 24, paint, 18)
+  ]);
+}
+
+function regularPolygonPoints(sides: number, radius: number, centerX: number, centerY: number, rotation = -Math.PI / 2) {
+  return Array.from({ length: sides }, (_, index) => {
+    const angle = rotation + (index * Math.PI * 2) / sides;
+    return {
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY + Math.sin(angle) * radius
+    };
+  });
+}
+
+function starPoints(centerX: number, centerY: number, outerRadius: number, innerRadius: number) {
+  return Array.from({ length: 10 }, (_, index) => {
+    const angle = -Math.PI / 2 + (index * Math.PI) / 5;
+    const radius = index % 2 === 0 ? outerRadius : innerRadius;
+    return {
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY + Math.sin(angle) * radius
+    };
+  });
+}
+
+function makeFoldedNote(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 118, 92, [
+    new fabric.Polygon(
+      [
+        { x: 0, y: 0 },
+        { x: 86, y: 0 },
+        { x: 118, y: 32 },
+        { x: 118, y: 92 },
+        { x: 0, y: 92 }
+      ],
+      {
+        left: 0,
+        top: 0,
+        fill: paint.fill,
+        stroke: paint.stroke,
+        strokeWidth: paint.strokeWidth,
+        strokeUniform: true
+      }
+    ),
+    new fabric.Polygon(
+      [
+        { x: 86, y: 0 },
+        { x: 86, y: 32 },
+        { x: 118, y: 32 }
+      ],
+      {
+        left: 0,
+        top: 0,
+        fill: "rgba(255,255,255,0)",
+        stroke: paint.stroke,
+        strokeWidth: paint.strokeWidth,
+        strokeUniform: true
+      }
+    )
+  ]);
+}
+
+function makeCallout(pointer: fabric.Point, paint: ShapePaint) {
+  return makePolygon(
+    [
+      { x: 0, y: 0 },
+      { x: 132, y: 0 },
+      { x: 132, y: 70 },
+      { x: 82, y: 70 },
+      { x: 62, y: 96 },
+      { x: 56, y: 70 },
+      { x: 0, y: 70 }
+    ],
+    pointer,
+    132,
+    96,
+    paint
+  );
+}
+
+function makeCube(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 132, 102, [
+    new fabric.Rect({
+      left: 0,
+      top: 22,
+      width: 96,
+      height: 80,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    new fabric.Polygon(
+      [
+        { x: 0, y: 22 },
+        { x: 36, y: 0 },
+        { x: 132, y: 0 },
+        { x: 96, y: 22 }
+      ],
+      {
+        left: 0,
+        top: 0,
+        fill: paint.fill,
+        stroke: paint.stroke,
+        strokeWidth: paint.strokeWidth,
+        strokeUniform: true
+      }
+    ),
+    new fabric.Polygon(
+      [
+        { x: 96, y: 22 },
+        { x: 132, y: 0 },
+        { x: 132, y: 80 },
+        { x: 96, y: 102 }
+      ],
+      {
+        left: 0,
+        top: 0,
+        fill: paint.fill,
+        stroke: paint.stroke,
+        strokeWidth: paint.strokeWidth,
+        strokeUniform: true
+      }
+    )
+  ]);
+}
+
+function makeFolder(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 144, 94, [
+    new fabric.Polygon(
+      [
+        { x: 0, y: 18 },
+        { x: 46, y: 18 },
+        { x: 58, y: 0 },
+        { x: 96, y: 0 },
+        { x: 106, y: 18 },
+        { x: 144, y: 18 },
+        { x: 144, y: 94 },
+        { x: 0, y: 94 }
+      ],
+      {
+        left: 0,
+        top: 0,
+        fill: paint.fill,
+        stroke: paint.stroke,
+        strokeWidth: paint.strokeWidth,
+        strokeUniform: true
+      }
+    )
+  ]);
+}
+
+function makeTableShape(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 136, 96, [
+    new fabric.Rect({
+      left: 0,
+      top: 0,
+      width: 136,
+      height: 96,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    makeLine(0, 30, 136, 30, paint),
+    makeLine(0, 62, 136, 62, paint),
+    makeLine(45, 0, 45, 96, paint),
+    makeLine(91, 0, 91, 96, paint)
+  ]);
+}
+
+function makeDoubleDocument(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 144, 100, [
+    new fabric.Path("M 12 0 L 144 0 L 144 68 Q 111 50 78 68 Q 45 86 12 68 Z", {
+      left: 0,
+      top: 0,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    new fabric.Path("M 0 14 L 132 14 L 132 82 Q 99 64 66 82 Q 33 100 0 82 Z", {
+      left: 0,
+      top: 0,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    })
+  ]);
+}
+
+function makePredefinedProcess(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 136, 76, [
+    new fabric.Rect({
+      left: 0,
+      top: 0,
+      width: 136,
+      height: 76,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    makeLine(20, 0, 20, 76, paint),
+    makeLine(116, 0, 116, 76, paint)
+  ]);
+}
+
+function makeInternalStorage(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 136, 84, [
+    new fabric.Rect({
+      left: 0,
+      top: 0,
+      width: 136,
+      height: 84,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    makeLine(26, 0, 26, 84, paint),
+    makeLine(0, 24, 136, 24, paint)
+  ]);
+}
+
+function makeDisplay(pointer: fabric.Point, paint: ShapePaint) {
+  return makePath("M 0 42 Q 22 0 70 0 L 132 0 Q 110 42 132 84 L 70 84 Q 22 84 0 42 Z", pointer, 132, 84, paint);
+}
+
+function makeDelay(pointer: fabric.Point, paint: ShapePaint) {
+  return makePath("M 0 0 L 72 0 Q 128 0 128 42 Q 128 84 72 84 L 0 84 Z", pointer, 128, 84, paint);
+}
+
+function makeCard(pointer: fabric.Point, paint: ShapePaint) {
+  return makePolygon(
+    [
+      { x: 0, y: 0 },
+      { x: 136, y: 0 },
+      { x: 136, y: 84 },
+      { x: 24, y: 84 },
+      { x: 0, y: 60 }
+    ],
+    pointer,
+    136,
+    84,
+    paint
+  );
+}
+
+function makeTape(pointer: fabric.Point, paint: ShapePaint) {
+  return makePath("M 0 42 C 0 8 28 0 52 18 C 82 40 112 40 140 18 L 140 76 C 112 58 82 58 52 76 C 28 94 0 76 0 42 Z", pointer, 140, 94, paint);
+}
+
+function makeJunction(pointer: fabric.Point, paint: ShapePaint, label: string) {
+  return makeGroup(pointer, 64, 64, [
+    new fabric.Circle({
+      left: 0,
+      top: 0,
+      radius: 32,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    makeShapeText(label, 12, 18, 40, paint, 20)
+  ]);
+}
+
+function makeAssociativeEntity(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 144, 92, [
+    new fabric.Rect({
+      left: 0,
+      top: 0,
+      width: 144,
+      height: 92,
+      rx: 4,
+      ry: 4,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    new fabric.Polygon(
+      [
+        { x: 72, y: 12 },
+        { x: 120, y: 46 },
+        { x: 72, y: 80 },
+        { x: 24, y: 46 }
+      ],
+      {
+        left: 0,
+        top: 0,
+        fill: "rgba(255,255,255,0)",
+        stroke: paint.stroke,
+        strokeWidth: paint.strokeWidth,
+        strokeUniform: true
+      }
+    )
+  ]);
+}
+
+function makeKeyAttribute(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 136, 80, [
+    new fabric.Ellipse({
+      left: 0,
+      top: 0,
+      rx: 68,
+      ry: 40,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    makeLine(34, 56, 102, 56, paint)
+  ]);
+}
+
+function makeDerivedAttribute(pointer: fabric.Point, paint: ShapePaint) {
+  return new fabric.Ellipse({
+    ...centeredShape(pointer, 128, 76, paint),
+    rx: 64,
+    ry: 38,
+    strokeDashArray: [8, 5]
+  });
+}
+
+function makeUmlInterface(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 108, 92, [
+    new fabric.Circle({
+      left: 30,
+      top: 0,
+      radius: 24,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    makeShapeText("interface", 0, 58, 108, paint, 13)
+  ]);
+}
+
+function makeUmlObject(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 142, 76, [
+    new fabric.Rect({
+      left: 0,
+      top: 0,
+      width: 142,
+      height: 76,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    makeShapeText("object:Class", 14, 18, 114, paint, 14),
+    makeLine(26, 42, 116, 42, paint)
+  ]);
+}
+
+function makeComponentShape(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 150, 92, [
+    new fabric.Rect({
+      left: 0,
+      top: 0,
+      width: 150,
+      height: 92,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    new fabric.Rect({
+      left: 12,
+      top: 18,
+      width: 28,
+      height: 16,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    new fabric.Rect({
+      left: 12,
+      top: 54,
+      width: 28,
+      height: 16,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    })
+  ]);
+}
+
+function makeLifeline(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 104, 170, [
+    new fabric.Rect({
+      left: 0,
+      top: 0,
+      width: 104,
+      height: 40,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    new fabric.Line([52, 40, 52, 170], {
+      stroke: paint.stroke,
+      strokeDashArray: [6, 5],
+      strokeLineCap: "round",
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    })
+  ]);
+}
+
+function makeActivation(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 34, 150, [
+    new fabric.Rect({
+      left: 8,
+      top: 0,
+      width: 18,
+      height: 150,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    })
+  ]);
+}
+
+function makeLogicNot(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 136, 84, [
+    new fabric.Polygon(
+      [
+        { x: 0, y: 0 },
+        { x: 94, y: 42 },
+        { x: 0, y: 84 }
+      ],
+      {
+        left: 0,
+        top: 0,
+        fill: paint.fill,
+        stroke: paint.stroke,
+        strokeWidth: paint.strokeWidth,
+        strokeUniform: true
+      }
+    ),
+    new fabric.Circle({
+      left: 96,
+      top: 32,
+      radius: 10,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    makeLine(116, 42, 136, 42, paint)
+  ]);
+}
+
+function makeLogicXor(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 138, 84, [
+    new fabric.Path("M 10 0 Q 52 42 10 84", {
+      left: 0,
+      top: 0,
+      fill: "",
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    new fabric.Path("M 0 0 Q 42 42 0 84 L 56 84 Q 128 84 128 42 Q 128 0 56 0 Z", {
+      left: 10,
+      top: 0,
+      fill: paint.fill,
+      stroke: paint.stroke,
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    })
+  ]);
+}
+
+function makeSwitch(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 130, 68, [makeLine(0, 48, 42, 48, paint), makeLine(88, 48, 130, 48, paint), makeLine(42, 48, 88, 14, paint)]);
+}
+
+function makeLed(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 132, 92, [
+    makeLogicNot(new fabric.Point(68, 46), paint),
+    makeLine(88, 0, 122, 0, paint),
+    makeLine(100, 16, 132, 16, paint),
+    makeLine(122, 0, 114, 8, paint),
+    makeLine(122, 0, 112, -2, paint),
+    makeLine(132, 16, 124, 24, paint),
+    makeLine(132, 16, 122, 14, paint)
+  ]);
+}
+
+function makeInductor(pointer: fabric.Point, paint: ShapePaint) {
+  return makeGroup(pointer, 140, 64, [
+    makeLine(0, 32, 24, 32, paint),
+    new fabric.Path("M 24 32 C 24 8 52 8 52 32 C 52 8 80 8 80 32 C 80 8 108 8 108 32 C 108 8 136 8 136 32", {
+      left: 0,
+      top: 0,
+      fill: "",
+      stroke: paint.stroke,
+      strokeLineCap: "round",
+      strokeWidth: paint.strokeWidth,
+      strokeUniform: true
+    }),
+    makeLine(136, 32, 140, 32, paint)
+  ]);
+}
+
+function createDiagramShape(tool: DrawingTool, pointer: fabric.Point, paint: ShapePaint): fabric.Object | null {
+  switch (tool) {
+    case "rectangle":
+      return new fabric.Rect({
+        ...centeredShape(pointer, 128, 76, paint),
+        width: 128,
+        height: 76,
+        rx: 4,
+        ry: 4
+      });
+    case "rounded-rectangle":
+      return new fabric.Rect({
+        ...centeredShape(pointer, 132, 72, paint),
+        width: 132,
+        height: 72,
+        rx: 18,
+        ry: 18
+      });
+    case "square":
+      return new fabric.Rect({
+        ...centeredShape(pointer, 92, 92, paint),
+        width: 92,
+        height: 92,
+        rx: 3,
+        ry: 3
+      });
+    case "ellipse":
+    case "er-attribute":
+      return new fabric.Ellipse({
+        ...centeredShape(pointer, 128, 76, paint),
+        rx: 64,
+        ry: 38
+      });
+    case "diamond":
+    case "er-relationship":
+      return makePolygon(
+        [
+          { x: 64, y: 0 },
+          { x: 128, y: 42 },
+          { x: 64, y: 84 },
+          { x: 0, y: 42 }
+        ],
+        pointer,
+        128,
+        84,
+        paint
+      );
+    case "triangle":
+      return makePolygon(
+        [
+          { x: 64, y: 0 },
+          { x: 128, y: 96 },
+          { x: 0, y: 96 }
+        ],
+        pointer,
+        128,
+        96,
+        paint
+      );
+    case "pentagon":
+      return makePolygon(regularPolygonPoints(5, 58, 64, 64), pointer, 128, 128, paint);
+    case "octagon":
+      return makePolygon(regularPolygonPoints(8, 58, 64, 64, Math.PI / 8), pointer, 128, 128, paint);
+    case "plus-shape":
+      return makePolygon(
+        [
+          { x: 48, y: 0 },
+          { x: 80, y: 0 },
+          { x: 80, y: 48 },
+          { x: 128, y: 48 },
+          { x: 128, y: 80 },
+          { x: 80, y: 80 },
+          { x: 80, y: 128 },
+          { x: 48, y: 128 },
+          { x: 48, y: 80 },
+          { x: 0, y: 80 },
+          { x: 0, y: 48 },
+          { x: 48, y: 48 }
+        ],
+        pointer,
+        128,
+        128,
+        paint
+      );
+    case "cross":
+      return makePolygon(
+        [
+          { x: 22, y: 0 },
+          { x: 64, y: 42 },
+          { x: 106, y: 0 },
+          { x: 128, y: 22 },
+          { x: 86, y: 64 },
+          { x: 128, y: 106 },
+          { x: 106, y: 128 },
+          { x: 64, y: 86 },
+          { x: 22, y: 128 },
+          { x: 0, y: 106 },
+          { x: 42, y: 64 },
+          { x: 0, y: 22 }
+        ],
+        pointer,
+        128,
+        128,
+        paint
+      );
+    case "star":
+      return makePolygon(starPoints(64, 64, 62, 27), pointer, 128, 128, paint);
+    case "callout":
+      return makeCallout(pointer, paint);
+    case "cube":
+      return makeCube(pointer, paint);
+    case "folder":
+      return makeFolder(pointer, paint);
+    case "table":
+      return makeTableShape(pointer, paint);
+    case "note":
+    case "uml-note":
+      return makeFoldedNote(pointer, paint);
+    case "double-document":
+      return makeDoubleDocument(pointer, paint);
+    case "card":
+      return makeCard(pointer, paint);
+    case "tape":
+      return makeTape(pointer, paint);
+    case "terminator":
+      return new fabric.Rect({
+        ...centeredShape(pointer, 132, 64, paint),
+        width: 132,
+        height: 64,
+        rx: 32,
+        ry: 32
+      });
+    case "parallelogram":
+      return makePolygon(
+        [
+          { x: 26, y: 0 },
+          { x: 136, y: 0 },
+          { x: 110, y: 76 },
+          { x: 0, y: 76 }
+        ],
+        pointer,
+        136,
+        76,
+        paint
+      );
+    case "document":
+      return makePath("M 0 0 L 132 0 L 132 68 Q 99 50 66 68 Q 33 86 0 68 Z", pointer, 132, 86, paint);
+    case "hexagon":
+      return makePolygon(
+        [
+          { x: 28, y: 0 },
+          { x: 108, y: 0 },
+          { x: 136, y: 42 },
+          { x: 108, y: 84 },
+          { x: 28, y: 84 },
+          { x: 0, y: 42 }
+        ],
+        pointer,
+        136,
+        84,
+        paint
+      );
+    case "trapezoid":
+      return makePolygon(
+        [
+          { x: 18, y: 0 },
+          { x: 128, y: 0 },
+          { x: 110, y: 76 },
+          { x: 0, y: 76 }
+        ],
+        pointer,
+        128,
+        76,
+        paint
+      );
+    case "predefined-process":
+      return makePredefinedProcess(pointer, paint);
+    case "internal-storage":
+      return makeInternalStorage(pointer, paint);
+    case "manual-input":
+      return makePolygon(
+        [
+          { x: 0, y: 22 },
+          { x: 136, y: 0 },
+          { x: 136, y: 76 },
+          { x: 0, y: 76 }
+        ],
+        pointer,
+        136,
+        76,
+        paint
+      );
+    case "stored-data":
+      return makeDatabase(pointer, paint);
+    case "delay":
+      return makeDelay(pointer, paint);
+    case "display":
+      return makeDisplay(pointer, paint);
+    case "off-page-connector":
+      return makePolygon(
+        [
+          { x: 0, y: 0 },
+          { x: 128, y: 0 },
+          { x: 128, y: 64 },
+          { x: 64, y: 104 },
+          { x: 0, y: 64 }
+        ],
+        pointer,
+        128,
+        104,
+        paint
+      );
+    case "sort":
+      return makePolygon(
+        [
+          { x: 64, y: 0 },
+          { x: 128, y: 52 },
+          { x: 64, y: 104 },
+          { x: 0, y: 52 }
+        ],
+        pointer,
+        128,
+        104,
+        paint
+      );
+    case "merge":
+      return makePolygon(
+        [
+          { x: 0, y: 0 },
+          { x: 128, y: 0 },
+          { x: 64, y: 104 }
+        ],
+        pointer,
+        128,
+        104,
+        paint
+      );
+    case "collate":
+      return makePolygon(
+        [
+          { x: 0, y: 0 },
+          { x: 128, y: 0 },
+          { x: 64, y: 52 },
+          { x: 128, y: 104 },
+          { x: 0, y: 104 },
+          { x: 64, y: 52 }
+        ],
+        pointer,
+        128,
+        104,
+        paint
+      );
+    case "summing-junction":
+      return makeJunction(pointer, paint, "+");
+    case "or-junction":
+      return makeJunction(pointer, paint, "x");
+    case "database":
+      return makeDatabase(pointer, paint);
+    case "cloud":
+      return makePath(
+        "M 34 84 C 16 84 0 70 0 52 C 0 36 13 23 30 24 C 38 7 56 0 74 8 C 86 2 104 6 114 20 C 130 23 140 36 140 52 C 140 70 126 84 106 84 Z",
+        pointer,
+        140,
+        88,
+        paint
+      );
+    case "actor":
+      return makeActor(pointer, paint);
+    case "uml-class":
+      return makeUmlClass(pointer, paint);
+    case "uml-interface":
+      return makeUmlInterface(pointer, paint);
+    case "uml-object":
+      return makeUmlObject(pointer, paint);
+    case "component":
+      return makeComponentShape(pointer, paint);
+    case "lifeline":
+      return makeLifeline(pointer, paint);
+    case "activation":
+      return makeActivation(pointer, paint);
+    case "package":
+      return makePackage(pointer, paint);
+    case "er-entity":
+      return new fabric.Rect({
+        ...centeredShape(pointer, 136, 80, paint),
+        width: 136,
+        height: 80,
+        rx: 4,
+        ry: 4
+      });
+    case "weak-entity":
+      return makeDoubleRect(pointer, paint);
+    case "associative-entity":
+      return makeAssociativeEntity(pointer, paint);
+    case "key-attribute":
+      return makeKeyAttribute(pointer, paint);
+    case "derived-attribute":
+      return makeDerivedAttribute(pointer, paint);
+    case "multivalue-attribute":
+      return makeDoubleEllipse(pointer, paint);
+    case "identifying-relationship":
+      return makeDoubleDiamond(pointer, paint);
+    case "state-start":
+      return new fabric.Circle({
+        left: pointer.x - 22,
+        top: pointer.y - 22,
+        radius: 22,
+        fill: paint.stroke,
+        stroke: paint.stroke,
+        strokeWidth: paint.strokeWidth,
+        strokeUniform: true
+      });
+    case "state-end":
+      return makeStateEnd(pointer, paint);
+    case "resistor":
+      return makeResistor(pointer, paint);
+    case "capacitor":
+      return makeCapacitor(pointer, paint);
+    case "ground":
+      return makeGround(pointer, paint);
+    case "battery":
+      return makeBattery(pointer, paint);
+    case "logic-and":
+      return makePath("M 0 0 L 64 0 Q 128 0 128 42 Q 128 84 64 84 L 0 84 Z", pointer, 128, 84, paint);
+    case "logic-or":
+      return makePath("M 0 0 Q 42 42 0 84 L 56 84 Q 128 84 128 42 Q 128 0 56 0 Z", pointer, 128, 84, paint);
+    case "logic-not":
+      return makeLogicNot(pointer, paint);
+    case "logic-xor":
+      return makeLogicXor(pointer, paint);
+    case "switch":
+      return makeSwitch(pointer, paint);
+    case "led":
+      return makeLed(pointer, paint);
+    case "inductor":
+      return makeInductor(pointer, paint);
+    default:
+      return null;
+  }
 }
 
 function serializablePaint(value: fabric.Object["fill"]) {
@@ -203,7 +1471,14 @@ function fallbackObjectPayload(object: fabric.Object): CanvasObjectPayload | nul
     stroke: serializablePaint(object.stroke),
     strokeWidth: object.strokeWidth ?? 1,
     strokeUniform: object.strokeUniform ?? true,
-    opacity: object.opacity ?? 1
+    opacity: object.opacity ?? 1,
+    sourceObjectId: objectWithMeta.sourceObjectId,
+    targetObjectId: objectWithMeta.targetObjectId,
+    sourceAnchor: objectWithMeta.sourceAnchor,
+    targetAnchor: objectWithMeta.targetAnchor,
+    attachedToObjectId: objectWithMeta.attachedToObjectId,
+    attachedOffsetX: objectWithMeta.attachedOffsetX,
+    attachedOffsetY: objectWithMeta.attachedOffsetY
   };
 
   if (object instanceof fabric.Ellipse) {
@@ -243,6 +1518,22 @@ function fallbackObjectPayload(object: fabric.Object): CanvasObjectPayload | nul
   return payload;
 }
 
+function isGeneratedTextPayload(object: CanvasObjectPayload) {
+  return object.objectType === "text" && /^gen-/.test(object.objectId) && /(?:-label|-body)$/.test(object.objectId);
+}
+
+function normalizeGeneratedTextPayload(object: CanvasObjectPayload): CanvasObjectPayload {
+  if (!isGeneratedTextPayload(object)) {
+    return object;
+  }
+
+  return {
+    ...object,
+    type: "textbox",
+    textAlign: "center"
+  };
+}
+
 function serializeFabricObject(object: fabric.Object): CanvasObjectPayload | null {
   if (!isSerializableObject(object)) {
     return null;
@@ -261,6 +1552,243 @@ function objectById(canvas: fabric.Canvas, objectId: string) {
   return canvas.getObjects().find((object) => (object as FabricObjectWithMeta).objectId === objectId) as
     | FabricObjectWithMeta
     | undefined;
+}
+
+const CONNECTION_ANCHORS: ConnectionAnchor[] = ["top", "right", "bottom", "left", "top-left", "top-right", "bottom-right", "bottom-left"];
+
+function isConnectorObject(object: fabric.Object) {
+  return (object as FabricObjectWithMeta).objectType === "connector";
+}
+
+function isAttachedObject(object: fabric.Object) {
+  return Boolean((object as FabricObjectWithMeta).attachedToObjectId);
+}
+
+function isConnectableObject(object?: FabricObjectWithMeta) {
+  if (!object || !isSerializableObject(object)) {
+    return false;
+  }
+
+  const type = object.objectType ?? object.type ?? "object";
+  return !["connector", "stroke", "analysis-highlight"].includes(type);
+}
+
+function anchorPointForObject(object: fabric.Object, anchor: ConnectionAnchor) {
+  object.setCoords();
+  const bounds = object.getBoundingRect(true, true);
+  const points: Record<ConnectionAnchor, fabric.Point> = {
+    top: new fabric.Point(bounds.left + bounds.width / 2, bounds.top),
+    right: new fabric.Point(bounds.left + bounds.width, bounds.top + bounds.height / 2),
+    bottom: new fabric.Point(bounds.left + bounds.width / 2, bounds.top + bounds.height),
+    left: new fabric.Point(bounds.left, bounds.top + bounds.height / 2),
+    "top-left": new fabric.Point(bounds.left, bounds.top),
+    "top-right": new fabric.Point(bounds.left + bounds.width, bounds.top),
+    "bottom-right": new fabric.Point(bounds.left + bounds.width, bounds.top + bounds.height),
+    "bottom-left": new fabric.Point(bounds.left, bounds.top + bounds.height)
+  };
+
+  return points[anchor];
+}
+
+function nearestConnectionAnchor(object: fabric.Object, pointer: fabric.Point): ConnectionAnchor {
+  return CONNECTION_ANCHORS.reduce((nearest, anchor) => {
+    const nearestPoint = anchorPointForObject(object, nearest);
+    const anchorPoint = anchorPointForObject(object, anchor);
+    const nearestDistance = Math.hypot(nearestPoint.x - pointer.x, nearestPoint.y - pointer.y);
+    const anchorDistance = Math.hypot(anchorPoint.x - pointer.x, anchorPoint.y - pointer.y);
+    return anchorDistance < nearestDistance ? anchor : nearest;
+  }, "right" as ConnectionAnchor);
+}
+
+function connectorTargetFromEvent(canvas: fabric.Canvas, event: MouseEvent) {
+  const target = canvas.findTarget(event, false) as FabricObjectWithMeta | undefined;
+
+  if (target?.attachedToObjectId) {
+    const attachedTarget = objectById(canvas, target.attachedToObjectId) as FabricObjectWithMeta | undefined;
+    return isConnectableObject(attachedTarget) ? attachedTarget : undefined;
+  }
+
+  return isConnectableObject(target) ? target : undefined;
+}
+
+function attachConnectorEnd(line: fabric.Line, target: FabricObjectWithMeta | undefined, pointer: fabric.Point) {
+  if (!target?.objectId || target.objectId === (line as FabricObjectWithMeta).sourceObjectId) {
+    delete (line as FabricObjectWithMeta).targetObjectId;
+    delete (line as FabricObjectWithMeta).targetAnchor;
+    line.set({ x2: pointer.x, y2: pointer.y });
+    return;
+  }
+
+  const anchor = nearestConnectionAnchor(target, pointer);
+  const anchorPoint = anchorPointForObject(target, anchor);
+  const lineWithMeta = line as FabricObjectWithMeta;
+  lineWithMeta.targetObjectId = target.objectId;
+  lineWithMeta.targetAnchor = anchor;
+  line.set({ x2: anchorPoint.x, y2: anchorPoint.y });
+}
+
+function updateAttachedConnector(canvas: fabric.Canvas, connector: fabric.Object) {
+  if (!(connector instanceof fabric.Line)) {
+    return;
+  }
+
+  const connectorWithMeta = connector as FabricObjectWithMeta;
+
+  if (connectorWithMeta.sourceObjectId && connectorWithMeta.sourceAnchor) {
+    const source = objectById(canvas, connectorWithMeta.sourceObjectId);
+
+    if (source) {
+      const sourcePoint = anchorPointForObject(source, connectorWithMeta.sourceAnchor);
+      connector.set({ x1: sourcePoint.x, y1: sourcePoint.y });
+    }
+  }
+
+  if (connectorWithMeta.targetObjectId && connectorWithMeta.targetAnchor) {
+    const target = objectById(canvas, connectorWithMeta.targetObjectId);
+
+    if (target) {
+      const targetPoint = anchorPointForObject(target, connectorWithMeta.targetAnchor);
+      connector.set({ x2: targetPoint.x, y2: targetPoint.y });
+    }
+  }
+
+  connector.setCoords();
+  updateAttachedObjectsForObject(canvas, connectorWithMeta);
+}
+
+function connectedLinesForObject(canvas: fabric.Canvas, objectId: string) {
+  return canvas
+    .getObjects()
+    .filter((object): object is fabric.Line & FabricObjectWithMeta => {
+      const connector = object as FabricObjectWithMeta;
+      return object instanceof fabric.Line && connector.objectType === "connector" && (connector.sourceObjectId === objectId || connector.targetObjectId === objectId);
+    });
+}
+
+function attachedObjectsForObject(canvas: fabric.Canvas, objectId: string) {
+  return canvas.getObjects().filter((object): object is fabric.Object & FabricObjectWithMeta => {
+    return (object as FabricObjectWithMeta).attachedToObjectId === objectId;
+  });
+}
+
+function attachmentBasePoint(target: fabric.Object) {
+  if (target instanceof fabric.Line) {
+    return {
+      left: ((target.x1 ?? 0) + (target.x2 ?? 0)) / 2,
+      top: ((target.y1 ?? 0) + (target.y2 ?? 0)) / 2
+    };
+  }
+
+  return {
+    left: target.left ?? 0,
+    top: target.top ?? 0
+  };
+}
+
+function updateAttachedObjectsForObject(canvas: fabric.Canvas, target: FabricObjectWithMeta) {
+  if (!target.objectId) {
+    return [];
+  }
+
+  const { left, top } = attachmentBasePoint(target);
+  const attachedObjects = attachedObjectsForObject(canvas, target.objectId);
+
+  attachedObjects.forEach((object) => {
+    object.set({
+      left: left + (object.attachedOffsetX ?? 0),
+      top: top + (object.attachedOffsetY ?? 0)
+    });
+    object.setCoords();
+  });
+
+  return attachedObjects;
+}
+
+function updateAttachmentOffsetForObject(canvas: fabric.Canvas, target: FabricObjectWithMeta) {
+  if (!target.attachedToObjectId) {
+    return false;
+  }
+
+  const attachedTarget = objectById(canvas, target.attachedToObjectId);
+
+  if (!attachedTarget) {
+    return false;
+  }
+
+  const { left, top } = attachmentBasePoint(attachedTarget);
+  target.attachedOffsetX = (target.left ?? 0) - left;
+  target.attachedOffsetY = (target.top ?? 0) - top;
+  return true;
+}
+
+function inferGeneratedAttachmentMetadata(canvas: fabric.Canvas) {
+  canvas.getObjects().forEach((object) => {
+    const objectWithMeta = object as FabricObjectWithMeta;
+
+    if (objectWithMeta.attachedToObjectId || objectWithMeta.objectType !== "text" || !objectWithMeta.objectId) {
+      return;
+    }
+
+    const edgeMatch = objectWithMeta.objectId.match(/^(.*-edge-\d+)-label$/);
+
+    if (edgeMatch?.[1]) {
+      const target = objectById(canvas, edgeMatch[1]);
+
+      if (target) {
+        const { left, top } = attachmentBasePoint(target);
+        objectWithMeta.attachedToObjectId = target.objectId;
+        objectWithMeta.attachedOffsetX = (object.left ?? 0) - left;
+        objectWithMeta.attachedOffsetY = (object.top ?? 0) - top;
+        object.set({
+          selectable: true,
+          evented: true
+        });
+      }
+
+      return;
+    }
+
+    const match = objectWithMeta.objectId.match(/^(.*)-(?:label|body)$/);
+    if (!match?.[1]) {
+      return;
+    }
+
+    const target = objectById(canvas, `${match[1]}-shape`);
+    if (!target) {
+      return;
+    }
+
+    objectWithMeta.attachedToObjectId = target.objectId;
+    objectWithMeta.attachedOffsetX = (object.left ?? 0) - (target.left ?? 0);
+    objectWithMeta.attachedOffsetY = (object.top ?? 0) - (target.top ?? 0);
+    object.set({
+      selectable: true,
+      evented: true
+    });
+  });
+}
+
+function applyCanvasObjectInteractivity(canvas: fabric.Canvas, tool: DrawingTool) {
+  canvas.getObjects().forEach((object) => {
+    const isHighlight = (object as FabricObjectWithMeta).objectType === "analysis-highlight";
+    object.selectable = !isHighlight && tool === "select";
+    object.evented = !isHighlight && (tool === "select" || tool === "eraser" || tool === "connector");
+  });
+}
+
+function updateConnectedLinesForObject(canvas: fabric.Canvas, objectId: string) {
+  const lines = connectedLinesForObject(canvas, objectId);
+  lines.forEach((line) => updateAttachedConnector(canvas, line));
+  return lines;
+}
+
+function refreshAttachedObjects(canvas: fabric.Canvas) {
+  inferGeneratedAttachmentMetadata(canvas);
+  canvas.getObjects().forEach((object) => updateAttachedObjectsForObject(canvas, object as FabricObjectWithMeta));
+}
+
+function refreshAttachedConnectors(canvas: fabric.Canvas) {
+  canvas.getObjects().filter(isConnectorObject).forEach((connector) => updateAttachedConnector(canvas, connector));
 }
 
 function BoardApp() {
@@ -283,7 +1811,8 @@ function BoardApp() {
   const [boardName, setBoardName] = useState("Collaborative AI Whiteboard");
   const [boardTags, setBoardTags] = useState<string[]>([]);
   const [currentTool, setCurrentTool] = useState<DrawingTool>("select");
-  const [strokeColor, setStrokeColor] = useState(isInstructorReview() ? "#dc2626" : "#1f2937");
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredTheme());
+  const [strokeColor, setStrokeColor] = useState(() => (isInstructorReview() ? "#dc2626" : defaultStrokeForTheme(readStoredTheme())));
   const [fillColor, setFillColor] = useState("#ffffff");
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [gridEnabled, setGridEnabled] = useState(true);
@@ -292,6 +1821,7 @@ function BoardApp() {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isGeneratingDiagram, setIsGeneratingDiagram] = useState(false);
   const [highlightEnabled, setHighlightEnabled] = useState(false);
   const [dismissedIssues, setDismissedIssues] = useState<Set<string>>(new Set());
   const [localToasts, setLocalToasts] = useState<ToastMessage[]>([]);
@@ -353,6 +1883,21 @@ function BoardApp() {
   useEffect(() => {
     commentPlacingRef.current = commentPlacing;
   }, [commentPlacing]);
+
+  const toggleTheme = useCallback(() => {
+    setThemeMode((currentTheme) => {
+      const nextTheme = currentTheme === "dark" ? "light" : "dark";
+      window.localStorage.setItem("daedalus-theme", nextTheme);
+
+      if (!isInstructorReview()) {
+        setStrokeColor((currentColor) =>
+          currentColor.toLowerCase() === defaultStrokeForTheme(currentTheme).toLowerCase() ? defaultStrokeForTheme(nextTheme) : currentColor
+        );
+      }
+
+      return nextTheme;
+    });
+  }, []);
 
   const showLocalToast = useCallback((message: string) => {
     const id = crypto.randomUUID();
@@ -464,10 +2009,13 @@ function BoardApp() {
       return;
     }
 
-    fabric.util.enlivenObjects(objects, (enlivenedObjects: fabric.Object[]) => {
+    fabric.util.enlivenObjects(objects.map(normalizeGeneratedTextPayload), (enlivenedObjects: fabric.Object[]) => {
       enlivenedObjects.forEach((object: fabric.Object) => {
         canvas.add(object);
       });
+      refreshAttachedConnectors(canvas);
+      refreshAttachedObjects(canvas);
+      applyCanvasObjectInteractivity(canvas, currentToolRef.current);
       canvas.requestRenderAll();
       isApplyingRemoteRef.current = false;
     }, "fabric");
@@ -559,68 +2107,17 @@ function BoardApp() {
 
   const createShapeAt = useCallback(
     (tool: DrawingTool, pointer: fabric.Point) => {
-      const stroke = strokeColorRef.current;
-      const fill = fillColorRef.current;
-      const width = strokeWidthRef.current;
-
-      if (tool === "rectangle") {
-        addObjectAndBroadcast(
-          new fabric.Rect({
-            left: pointer.x - 64,
-            top: pointer.y - 38,
-            width: 128,
-            height: 76,
-            rx: 4,
-            ry: 4,
-            fill,
-            stroke,
-            strokeWidth: width
-          }),
-          "rectangle"
-        );
-      }
-
-      if (tool === "ellipse") {
-        addObjectAndBroadcast(
-          new fabric.Ellipse({
-            left: pointer.x - 64,
-            top: pointer.y - 38,
-            rx: 64,
-            ry: 38,
-            fill,
-            stroke,
-            strokeWidth: width
-          }),
-          "ellipse"
-        );
-      }
-
-      if (tool === "diamond") {
-        addObjectAndBroadcast(
-          new fabric.Polygon(
-            [
-              { x: 64, y: 0 },
-              { x: 128, y: 42 },
-              { x: 64, y: 84 },
-              { x: 0, y: 42 }
-            ],
-            {
-              left: pointer.x - 64,
-              top: pointer.y - 42,
-              fill,
-              stroke,
-              strokeWidth: width
-            }
-          ),
-          "diamond"
-        );
-      }
+      const paint = {
+        stroke: strokeColorRef.current,
+        fill: fillColorRef.current,
+        strokeWidth: strokeWidthRef.current
+      };
 
       if (tool === "text") {
         const text = new fabric.IText("Label", {
           left: pointer.x,
           top: pointer.y,
-          fill: stroke,
+          fill: paint.stroke,
           fontFamily: "Inter, Arial, sans-serif",
           fontSize: 18
         });
@@ -643,6 +2140,14 @@ function BoardApp() {
           }),
           "sticky"
         );
+      }
+
+      if (tool !== "text" && tool !== "sticky") {
+        const shape = createDiagramShape(tool, pointer, paint);
+
+        if (shape) {
+          addObjectAndBroadcast(shape, tool);
+        }
       }
 
       currentToolRef.current = "select";
@@ -758,10 +2263,7 @@ function BoardApp() {
       canvas.isDrawingMode = tool === "pen";
       canvas.selection = tool === "select";
       canvas.defaultCursor = tool === "pan" ? "grab" : "crosshair";
-      canvas.getObjects().forEach((object) => {
-        object.selectable = tool === "select";
-        object.evented = tool === "select" || tool === "eraser";
-      });
+      applyCanvasObjectInteractivity(canvas, tool);
     };
 
     const handlePathCreated = (event: fabric.IEvent<MouseEvent>) => {
@@ -782,10 +2284,34 @@ function BoardApp() {
         return;
       }
 
-      assignMetadata(event.target, (event.target as FabricObjectWithMeta).objectType ?? "object");
+      const targetWithMeta = assignMetadata(event.target, (event.target as FabricObjectWithMeta).objectType ?? "object");
+      updateAttachmentOffsetForObject(canvas, targetWithMeta);
+      const attachedObjects = updateAttachedObjectsForObject(canvas, targetWithMeta);
+      const connectedLines = targetWithMeta.objectId ? updateConnectedLinesForObject(canvas, targetWithMeta.objectId) : [];
       broadcastObject(event.target);
+      attachedObjects.forEach((object) => broadcastObject(object));
+      connectedLines.forEach((line) => broadcastObject(line));
+      connectedLines.forEach((line) => {
+        if (line.objectId) {
+          attachedObjectsForObject(canvas, line.objectId).forEach((object) => broadcastObject(object));
+        }
+      });
       pushHistory();
       scheduleAnalysis();
+    };
+
+    const handleObjectTransforming = (event: fabric.IEvent<Event>) => {
+      const targetWithMeta = event.target as FabricObjectWithMeta | undefined;
+      const objectId = targetWithMeta?.objectId;
+
+      if (!objectId || !targetWithMeta) {
+        return;
+      }
+
+      updateAttachmentOffsetForObject(canvas, targetWithMeta);
+      updateAttachedObjectsForObject(canvas, targetWithMeta);
+      updateConnectedLinesForObject(canvas, objectId);
+      canvas.requestRenderAll();
     };
 
     const handleMouseDown = (event: fabric.IEvent<MouseEvent>) => {
@@ -841,7 +2367,27 @@ function BoardApp() {
 
         if (target && isSerializableObject(target)) {
           const objectId = target.objectId;
+          const connectedLines = objectId ? connectedLinesForObject(canvas, objectId) : [];
+          const attachedObjects = new Map<string, fabric.Object & FabricObjectWithMeta>();
+          const addAttachedObject = (object: fabric.Object & FabricObjectWithMeta) => {
+            if (object.objectId) {
+              attachedObjects.set(object.objectId, object);
+            }
+          };
+
+          if (objectId) {
+            attachedObjectsForObject(canvas, objectId).forEach(addAttachedObject);
+          }
+
+          connectedLines.forEach((line) => {
+            if (line.objectId) {
+              attachedObjectsForObject(canvas, line.objectId).forEach(addAttachedObject);
+            }
+          });
+
           canvas.remove(target);
+          attachedObjects.forEach((object) => canvas.remove(object));
+          connectedLines.forEach((line) => canvas.remove(line));
 
           if (objectId) {
             sendOperation({
@@ -851,6 +2397,30 @@ function BoardApp() {
               objectId
             });
           }
+
+          attachedObjects.forEach((object) => {
+            if (!object.objectId) {
+              return;
+            }
+
+            sendOperation({
+              type: "delete",
+              userId: participant.id,
+              boardVersion: 0,
+              objectId: object.objectId
+            });
+          });
+
+          connectedLines.forEach((line) => {
+            if (line.objectId) {
+              sendOperation({
+                type: "delete",
+                userId: participant.id,
+                boardVersion: 0,
+                objectId: line.objectId
+              });
+            }
+          });
 
           pushHistory();
           scheduleAnalysis();
@@ -865,14 +2435,22 @@ function BoardApp() {
       }
 
       if (tool === "connector") {
-        const line = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
+        const sourceTarget = connectorTargetFromEvent(canvas, event.e);
+        const sourceAnchor = sourceTarget ? nearestConnectionAnchor(sourceTarget, new fabric.Point(pointer.x, pointer.y)) : undefined;
+        const sourcePoint = sourceTarget && sourceAnchor ? anchorPointForObject(sourceTarget, sourceAnchor) : new fabric.Point(pointer.x, pointer.y);
+        const line = new fabric.Line([sourcePoint.x, sourcePoint.y, pointer.x, pointer.y], {
           stroke: strokeColorRef.current,
           strokeWidth: strokeWidthRef.current,
+          strokeDashArray: undefined,
           strokeLineCap: "round",
           strokeUniform: true,
-          selectable: false
+          selectable: false,
+          evented: false
         });
         assignMetadata(line, "connector");
+        const lineWithMeta = line as FabricObjectWithMeta;
+        lineWithMeta.sourceObjectId = sourceTarget?.objectId;
+        lineWithMeta.sourceAnchor = sourceAnchor;
         activeLineRef.current = line;
         canvas.add(line);
       }
@@ -915,16 +2493,13 @@ function BoardApp() {
       const line = activeLineRef.current;
 
       if (line) {
-        line.set({
-          x2: pointer.x,
-          y2: pointer.y
-        });
+        attachConnectorEnd(line, connectorTargetFromEvent(canvas, event.e), new fabric.Point(pointer.x, pointer.y));
         line.setCoords();
         canvas.requestRenderAll();
       }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (event: fabric.IEvent<MouseEvent>) => {
       if (isPanningRef.current) {
         isPanningRef.current = false;
         canvas.defaultCursor = "grab";
@@ -933,6 +2508,9 @@ function BoardApp() {
       const line = activeLineRef.current;
 
       if (line) {
+        const pointer = canvas.getPointer(event.e);
+        attachConnectorEnd(line, connectorTargetFromEvent(canvas, event.e), new fabric.Point(pointer.x, pointer.y));
+        updateAttachedConnector(canvas, line);
         activeLineRef.current = null;
         const length = Math.hypot((line.x2 ?? 0) - (line.x1 ?? 0), (line.y2 ?? 0) - (line.y1 ?? 0));
 
@@ -957,6 +2535,9 @@ function BoardApp() {
     };
 
     canvas.on("path:created", handlePathCreated);
+    canvas.on("object:moving", handleObjectTransforming);
+    canvas.on("object:scaling", handleObjectTransforming);
+    canvas.on("object:rotating", handleObjectTransforming);
     canvas.on("object:modified", handleObjectModified);
     canvas.on("mouse:down", handleMouseDown);
     canvas.on("mouse:move", handleMouseMove);
@@ -1002,11 +2583,7 @@ function BoardApp() {
       canvas.freeDrawingBrush.width = strokeWidth;
     }
 
-    canvas.getObjects().forEach((object) => {
-      const isHighlight = (object as FabricObjectWithMeta).objectType === "analysis-highlight";
-      object.selectable = !isHighlight && currentTool === "select";
-      object.evented = !isHighlight && (currentTool === "select" || currentTool === "eraser");
-    });
+    applyCanvasObjectInteractivity(canvas, currentTool);
     canvas.discardActiveObject();
     canvas.requestRenderAll();
   }, [currentTool, strokeColor, strokeWidth]);
@@ -1086,8 +2663,11 @@ function BoardApp() {
       canvas.remove(existing);
     }
 
-    fabric.util.enlivenObjects([remoteOperation.object], ([object]: fabric.Object[]) => {
+    fabric.util.enlivenObjects([normalizeGeneratedTextPayload(remoteOperation.object)], ([object]: fabric.Object[]) => {
       canvas.add(object);
+      refreshAttachedConnectors(canvas);
+      refreshAttachedObjects(canvas);
+      applyCanvasObjectInteractivity(canvas, currentToolRef.current);
       canvas.requestRenderAll();
       isApplyingRemoteRef.current = false;
       scheduleAnalysis();
@@ -1402,6 +2982,62 @@ function BoardApp() {
     [sendChat, serializeCanvasImage, serializeObjects]
   );
 
+  const generateDiagram = useCallback(
+    async (prompt: string) => {
+      if (!canvasReady) {
+        showLocalToast("Canvas is still loading");
+        return;
+      }
+
+      setIsGeneratingDiagram(true);
+
+      try {
+        const response = await fetchWithAuth(`${API_URL}/api/ai/generate-diagram`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            roomId,
+            prompt,
+            userId: participant.id
+          })
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { error?: unknown } | null;
+          showLocalToast(typeof payload?.error === "string" ? payload.error : "Diagram generation failed");
+          return;
+        }
+
+        const generated = (await response.json()) as GeneratedDiagram;
+        const objects = generated.objects.map((object) => ({
+          ...object,
+          authorId: typeof object.authorId === "string" ? object.authorId : participant.id
+        }));
+
+        loadObjects(objects);
+        sendReplaceOperation(objects);
+        historyRef.current.push(JSON.stringify(objects));
+        historyRef.current = historyRef.current.slice(-100);
+        redoRef.current = [];
+        updateHistoryFlags();
+        setBoardName(generated.title || "Generated Diagram");
+        scheduleAnalysis();
+        showLocalToast(
+          generated.provider === "mock" && generated.warnings.length > 0
+            ? "AI provider unavailable; local diagram built"
+            : `Built ${generated.diagramType}`
+        );
+      } catch (error) {
+        showLocalToast(error instanceof Error ? error.message : "Diagram generation failed");
+      } finally {
+        setIsGeneratingDiagram(false);
+      }
+    },
+    [canvasReady, loadObjects, participant.id, roomId, scheduleAnalysis, sendReplaceOperation, showLocalToast, updateHistoryFlags]
+  );
+
   const projectedCursors = useMemo(() => {
     const canvas = fabricRef.current;
     const transform = canvas?.viewportTransform ?? [1, 0, 0, 1, 0, 0];
@@ -1433,13 +3069,14 @@ function BoardApp() {
   }`;
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell theme-${themeMode}`}>
       <TopBar
         boardName={boardName}
         classroomId={classroomId}
         connectionStatus={connectionStatus}
         helpRequested={boardState?.helpRequested ?? false}
         tags={boardTags}
+        themeMode={themeMode}
         onBoardNameChange={setBoardName}
         onDashboardOpen={openDashboard}
         onDuplicate={duplicateBoard}
@@ -1450,6 +3087,7 @@ function BoardApp() {
         onShare={shareBoard}
         onShareSlack={shareSnapshotToSlack}
         onTagsChange={updateTags}
+        onThemeToggle={toggleTheme}
         participants={participants}
       />
 
@@ -1568,9 +3206,11 @@ function BoardApp() {
           dismissedIssues={dismissedIssues}
           highlightEnabled={highlightEnabled}
           isAnalyzing={isAnalyzing}
+          isGeneratingDiagram={isGeneratingDiagram}
           onAcceptSuggestion={acceptSuggestion}
           onAnalyze={() => void runAnalysis()}
           onChat={handleChat}
+          onGenerateDiagram={generateDiagram}
           onDismissIssue={dismissIssue}
           onToggleHighlight={() => setHighlightEnabled((enabled) => !enabled)}
         />

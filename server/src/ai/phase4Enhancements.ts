@@ -193,6 +193,7 @@ function buildSqlArtifact(roomId: string, objects: CanvasObjectPayload[], analys
   const tableLabels = uniqueLabels(
     nodes
       .filter((node) => !["diamond", "ellipse", "circle"].includes(node.kind))
+      .filter((node) => !["er-attribute", "key-attribute", "derived-attribute", "multivalue-attribute", "er-relationship", "identifying-relationship"].includes(node.kind))
       .map((node) => node.label)
       .slice(0, 8)
   );
