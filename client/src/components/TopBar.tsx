@@ -49,7 +49,14 @@ export function TopBar({
 
   return (
     <header className="topbar">
-      <div className="brand-mark">D</div>
+      <a
+        className="brand-mark-link"
+        href={window.location.port === "5173" ? "http://127.0.0.1:3333/" : "/"}
+        title="Return to Daedalus Landing Page"
+        style={{ textDecoration: "none", color: "inherit" }}
+      >
+        <div className="brand-mark">D</div>
+      </a>
       <input
         aria-label="Board name"
         className="board-title-input"
