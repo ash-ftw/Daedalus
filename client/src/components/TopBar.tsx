@@ -51,7 +51,7 @@ export function TopBar({
     <header className="topbar">
       <a
         className="brand-mark-link"
-        href={window.location.port === "5173" ? "http://127.0.0.1:3333/" : "/"}
+        href="/"
         title="Return to Daedalus Landing Page"
         style={{ textDecoration: "none", color: "inherit" }}
       >

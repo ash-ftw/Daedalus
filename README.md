@@ -21,15 +21,11 @@ shared/         Shared TypeScript contracts and data models
 # Install dependencies
 npm install
 
-# Start backend (3001) and collaborative canvas app (5173)
+# Start both backend (3001) and web app (5173)
 npm run dev
-
-# Start cinematic monochrome landing page (3333)
-npm run dev:landing
 ```
 
-- Landing Page: [http://127.0.0.1:3333](http://127.0.0.1:3333)
-- Whiteboard App: [http://127.0.0.1:5173](http://127.0.0.1:5173)
+- Application & Landing: [http://127.0.0.1:5173](http://127.0.0.1:5173)
 - API Service: [http://127.0.0.1:3001](http://127.0.0.1:3001)
 
 ## Contributing & Open Source

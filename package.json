@@ -15,11 +15,8 @@
   "scripts": {
     "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
     "dev:client": "vite --host 127.0.0.1 --port 5173",
-    "dev:landing": "vite landing --host 127.0.0.1 --port 3333",
     "dev:server": "tsx watch server/src/index.ts",
-    "build": "tsc --noEmit && vite build && vite build landing --outDir ../dist/landing --emptyOutDir",
-    "build:client": "vite build",
-    "build:landing": "vite build landing --outDir ../dist/landing --emptyOutDir",
+    "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit",
     "test": "node --import tsx --test server/src/auth/tokens.test.ts server/src/ai/guardrails.test.ts",
     "start": "tsx server/src/index.ts"
@@ -62,6 +59,7 @@
     "@types/node": "^22.10.2",
     "@types/pg": "^8.20.0",
     "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5"
+    "@types/react-dom": "^18.3.5",
+    "@types/three": "^0.187.0"
   }
 }
