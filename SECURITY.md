@@ -8,3 +8,4 @@ If you identify a security issue in Daedalus, please report it privately:
 - Please include steps or proof-of-concept demonstrating the issue.
 
 Please do not open public issues for sensitive security vulnerabilities until they have been addressed.
+
