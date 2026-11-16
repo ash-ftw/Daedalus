@@ -3,7 +3,7 @@ services:
     name: daedalus-whiteboard
     env: node
     plan: free
-    buildCommand: npm ci && npm run build
+    buildCommand: npm install && npm run build
     startCommand: npm start
     autoDeploy: true
     envVars:
