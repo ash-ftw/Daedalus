@@ -3,463 +3,863 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Daedalus — Collaborative AI Whiteboard</title>
-  <meta name="description" content="Sketch technical diagrams together in real-time while an AI co-pilot identifies, explains, and corrects your work. Built for students, instructors, and engineering teams." />
+  <title>Daedalus — The Living Neural Whiteboard</title>
+  <meta name="description" content="Draw together, think together, learn together. The real-time collaborative whiteboard with an AI co-pilot that identifies diagrams, explains concepts, and catches mistakes before your instructor does." />
+  
+  <!-- Modern Display Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;850&display=swap" rel="stylesheet" />
+  
+  <!-- Monochrome Master Stylesheet -->
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- Animation CDNs (with local module fallback support) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+  <script src="https://unpkg.com/lenis@1.1.20/dist/lenis.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
 </head>
 <body>
-  <!-- ==================== NAV ==================== -->
-  <nav id="main-nav">
-    <div class="nav-inner">
-      <a href="#" class="nav-logo">
-        <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
-          <path d="M16 2L28 8V24L16 30L4 24V8L16 2Z" stroke="currentColor" stroke-width="2" fill="none"/>
-          <path d="M16 2L16 30" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
-          <path d="M4 8L28 24" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
-          <path d="M28 8L4 24" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
-          <circle cx="16" cy="16" r="4" fill="currentColor" opacity="0.6"/>
-        </svg>
-        <span>Daedalus</span>
-      </a>
-      <div class="nav-links">
-        <a href="#features">Features</a>
-        <a href="#ai-engine">AI Engine</a>
-        <a href="#collaboration">Collaboration</a>
-        <a href="#personas">Who It's For</a>
-      </div>
-      <div class="nav-actions">
-        <a href="#" class="btn-ghost" id="nav-signin">Sign In</a>
-        <a href="#" class="btn-primary btn-small" id="nav-start">Start Free</a>
-      </div>
-      <button class="mobile-menu-btn" id="mobile-menu-toggle" aria-label="Toggle menu">
-        <span></span><span></span><span></span>
-      </button>
-    </div>
-  </nav>
+  <!-- Top Scroll Progress Indicator (Silver Glow) -->
+  <div id="scroll-progress"></div>
 
-  <!-- ==================== HERO ==================== -->
-  <section id="hero">
-    <div class="hero-bg">
-      <div class="grid-overlay"></div>
-      <div class="gradient-orb orb-1"></div>
-      <div class="gradient-orb orb-2"></div>
-      <div class="gradient-orb orb-3"></div>
-    </div>
-    <div class="hero-content">
-      <div class="hero-badge" id="hero-badge">
-        <span class="badge-dot"></span>
-        <span>Now in Public Beta</span>
-      </div>
-      <h1 id="hero-title">
-        <span class="hero-line">Draw together.</span>
-        <span class="hero-line gradient-text">Think together.</span>
-        <span class="hero-line">Learn together.</span>
-      </h1>
-      <p class="hero-subtitle" id="hero-subtitle">
-        A real-time collaborative whiteboard with an AI co-pilot that identifies your diagrams, explains concepts, and catches mistakes — before your instructor does.
-      </p>
-      <div class="hero-cta" id="hero-cta">
-        <a href="#" class="btn-primary btn-large" id="cta-start">
-          <span>Open a Board</span>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        </a>
-        <a href="#features" class="btn-ghost btn-large" id="cta-features">See How It Works</a>
-      </div>
-      <div class="hero-metrics" id="hero-metrics">
-        <div class="metric">
-          <span class="metric-value" data-count="88">0</span><span class="metric-suffix">%</span>
-          <span class="metric-label">AI Accuracy</span>
-        </div>
-        <div class="metric-divider"></div>
-        <div class="metric">
-          <span class="metric-value" data-count="100">0</span><span class="metric-suffix">ms</span>
-          <span class="metric-label">Sync Latency</span>
-        </div>
-        <div class="metric-divider"></div>
-        <div class="metric">
-          <span class="metric-value" data-count="25">0</span><span class="metric-suffix">+</span>
-          <span class="metric-label">Users/Board</span>
-        </div>
-      </div>
-    </div>
+  <!-- Three.js 3D WebGL Matrix in Monochromatic Silver & White -->
+  <canvas id="threejs-bg"></canvas>
 
-    <!-- Interactive Canvas Preview -->
-    <div class="hero-canvas-wrapper" id="hero-canvas-wrapper">
-      <div class="canvas-chrome">
-        <div class="chrome-dots"><span></span><span></span><span></span></div>
-        <span class="chrome-title">Daedalus — ER Diagram Session</span>
-        <div class="chrome-actions">
-          <div class="avatar-stack">
-            <div class="avatar" style="background: #6366f1;">P</div>
-            <div class="avatar" style="background: #ec4899;">S</div>
-            <div class="avatar" style="background: #10b981;">A</div>
+  <!-- Film Grain Noise Texture -->
+  <div class="noise-overlay"></div>
+
+  <!-- Main Content Layer -->
+  <div id="page-content">
+    
+    <!-- Top Diffuse Spotlight Beam -->
+    <div class="top-spotlight-beam"></div>
+
+    <!-- ==================== FLOATING GLASS NAVIGATION ==================== -->
+    <nav id="main-nav">
+      <div class="nav-inner">
+        <a href="#" class="nav-brand" id="brand-logo">
+          <div class="brand-icon-wrap">
+            <svg class="brand-icon" viewBox="0 0 32 32" fill="none">
+              <path d="M16 2L28 8V24L16 30L4 24V8L16 2Z" stroke="#ffffff" stroke-width="2.2" stroke-linejoin="round"/>
+              <path d="M16 2L16 30" stroke="#ffffff" stroke-width="1.5" opacity="0.6"/>
+              <path d="M4 8L28 24" stroke="#ffffff" stroke-width="1.5" opacity="0.4"/>
+              <path d="M28 8L4 24" stroke="#ffffff" stroke-width="1.5" opacity="0.4"/>
+              <circle cx="16" cy="16" r="3.5" fill="#ffffff"/>
+            </svg>
           </div>
-        </div>
-      </div>
-      <div class="canvas-body">
-        <canvas id="hero-canvas"></canvas>
-        <!-- Floating AI Panel -->
-        <div class="floating-ai-panel" id="floating-ai-panel">
-          <div class="ai-panel-header">
-            <div class="ai-icon-wrap">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 014 4v1a2 2 0 012 2v1a2 2 0 01-2 2H8a2 2 0 01-2-2V9a2 2 0 012-2V6a4 4 0 014-4z"/><path d="M9 22v-4a3 3 0 016 0v4"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/></svg>
-            </div>
-            <span>AI Explainer</span>
-            <span class="ai-status-dot"></span>
-          </div>
-          <div class="ai-panel-body">
-            <div class="ai-typing" id="ai-typing">
-              <div class="ai-badge-detected">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
-                <span>ER Diagram — Chen Notation</span>
-                <span class="confidence">92%</span>
-              </div>
-              <p class="ai-msg" id="ai-msg-1"></p>
-              <p class="ai-msg" id="ai-msg-2"></p>
-            </div>
-          </div>
-        </div>
-        <!-- Floating cursors -->
-        <div class="floating-cursor cursor-1" id="cursor-1">
-          <svg width="16" height="20" viewBox="0 0 16 20"><path d="M0 0L16 12L8 12L4 20L0 0Z" fill="#6366f1"/></svg>
-          <span class="cursor-label" style="background: #6366f1;">Priya</span>
-        </div>
-        <div class="floating-cursor cursor-2" id="cursor-2">
-          <svg width="16" height="20" viewBox="0 0 16 20"><path d="M0 0L16 12L8 12L4 20L0 0Z" fill="#ec4899"/></svg>
-          <span class="cursor-label" style="background: #ec4899;">Sofia</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ==================== LOGOS / TRUST ==================== -->
-  <section id="trust-bar">
-    <p>Trusted by teams at</p>
-    <div class="trust-logos">
-      <span class="trust-logo">Stanford CS</span>
-      <span class="trust-logo">MIT Media Lab</span>
-      <span class="trust-logo">Georgia Tech</span>
-      <span class="trust-logo">UC Berkeley</span>
-      <span class="trust-logo">Carnegie Mellon</span>
-    </div>
-  </section>
-
-  <!-- ==================== FEATURES ==================== -->
-  <section id="features">
-    <div class="section-header">
-      <span class="section-tag">Core Capabilities</span>
-      <h2>Everything you need on<br/><span class="gradient-text">one infinite canvas</span></h2>
-      <p class="section-subtitle">Drawing tools, AI intelligence, and real-time collaboration — unified in a single, seamless experience.</p>
-    </div>
-    <div class="features-grid">
-      <div class="feature-card card-large" id="feature-canvas">
-        <div class="feature-visual">
-          <div class="mini-toolbar">
-            <div class="tool-icon active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg></div>
-            <div class="tool-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>
-            <div class="tool-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg></div>
-            <div class="tool-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg></div>
-            <div class="tool-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
-          </div>
-          <div class="shape-demo">
-            <div class="demo-shape s-rect"></div>
-            <div class="demo-shape s-diamond"></div>
-            <div class="demo-shape s-circle"></div>
-            <div class="demo-connector c-1"></div>
-            <div class="demo-connector c-2"></div>
-          </div>
-        </div>
-        <div class="feature-text">
-          <h3>Infinite Canvas</h3>
-          <p>Pan, zoom, and draw without limits. Full shape library for flowcharts, ER diagrams, circuit diagrams, UML, and more.</p>
-        </div>
-      </div>
-
-      <div class="feature-card" id="feature-ai">
-        <div class="feature-visual">
-          <div class="ai-detect-demo">
-            <div class="detect-ring"></div>
-            <div class="detect-label">Flowchart Detected</div>
-            <div class="detect-confidence">
-              <div class="conf-bar"><div class="conf-fill" style="width:92%"></div></div>
-              <span>92%</span>
-            </div>
-          </div>
-        </div>
-        <div class="feature-text">
-          <h3>AI Identification</h3>
-          <p>Automatically recognizes diagram types and components with confidence scoring.</p>
-        </div>
-      </div>
-
-      <div class="feature-card" id="feature-correct">
-        <div class="feature-visual">
-          <div class="correction-demo">
-            <div class="correction-item">
-              <span class="correction-badge error">Error</span>
-              <span>Mixed Chen & Crow's Foot notation</span>
-            </div>
-            <div class="correction-item">
-              <span class="correction-badge warning">Warning</span>
-              <span>Missing cardinality on relationship</span>
-            </div>
-            <div class="correction-item">
-              <span class="correction-badge suggestion">Tip</span>
-              <span>Consider adding a primary key attribute</span>
-            </div>
-          </div>
-        </div>
-        <div class="feature-text">
-          <h3>Smart Corrections</h3>
-          <p>AI flags notation errors and inconsistencies with actionable fix suggestions.</p>
-        </div>
-      </div>
-
-      <div class="feature-card" id="feature-explain">
-        <div class="feature-visual">
-          <div class="explain-demo">
-            <div class="explain-bubble">
-              <span class="explain-icon">💡</span>
-              <p>"This diamond represents a <strong>decision node</strong> — the flow branches based on a boolean condition."</p>
-            </div>
-          </div>
-        </div>
-        <div class="feature-text">
-          <h3>Contextual Explanations</h3>
-          <p>Get plain-language explanations of every component on your canvas, tuned to your level.</p>
-        </div>
-      </div>
-
-      <div class="feature-card card-large" id="feature-collab">
-        <div class="feature-visual">
-          <div class="collab-demo">
-            <div class="collab-avatars">
-              <div class="collab-avatar" style="--color: #6366f1; --delay: 0s;">
-                <div class="pulse-ring"></div>
-                <span>P</span>
-              </div>
-              <div class="collab-avatar" style="--color: #ec4899; --delay: 0.2s;">
-                <div class="pulse-ring"></div>
-                <span>S</span>
-              </div>
-              <div class="collab-avatar" style="--color: #10b981; --delay: 0.4s;">
-                <div class="pulse-ring"></div>
-                <span>A</span>
-              </div>
-              <div class="collab-avatar" style="--color: #f59e0b; --delay: 0.6s;">
-                <div class="pulse-ring"></div>
-                <span>M</span>
-              </div>
-            </div>
-            <div class="collab-label">4 users drawing live</div>
-            <div class="latency-badge">
-              <span class="latency-dot"></span>
-              <span>&lt; 100ms sync</span>
-            </div>
-          </div>
-        </div>
-        <div class="feature-text">
-          <h3>Real-Time Collaboration</h3>
-          <p>Up to 25 participants with live cursors, named colors, and CRDT-powered conflict-free sync.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ==================== AI ENGINE ==================== -->
-  <section id="ai-engine">
-    <div class="section-header">
-      <span class="section-tag">AI-Powered</span>
-      <h2>An always-on tutor<br/><span class="gradient-text">watching your canvas</span></h2>
-      <p class="section-subtitle">Powered by vision-capable multimodal AI. It sees what you draw, understands the context, and responds in real-time.</p>
-    </div>
-    <div class="ai-showcase">
-      <div class="ai-flow">
-        <div class="flow-step" id="flow-draw">
-          <div class="flow-num">01</div>
-          <div class="flow-icon">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
-          </div>
-          <h3>You draw</h3>
-          <p>Sketch diagrams using freehand tools, shapes, connectors, and text annotations.</p>
-        </div>
-        <div class="flow-connector"><div class="flow-line"></div></div>
-        <div class="flow-step" id="flow-analyze">
-          <div class="flow-num">02</div>
-          <div class="flow-icon">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
-          </div>
-          <h3>AI analyzes</h3>
-          <p>After a brief pause, the AI captures a snapshot and identifies your diagram type and components.</p>
-        </div>
-        <div class="flow-connector"><div class="flow-line"></div></div>
-        <div class="flow-step" id="flow-explain">
-          <div class="flow-num">03</div>
-          <div class="flow-icon">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-          </div>
-          <h3>You learn</h3>
-          <p>Get explanations, corrections, and hints streamed right into the AI panel — or ask follow-up questions.</p>
-        </div>
-      </div>
-      <div class="ai-diagram-types">
-        <h4>Supported Diagram Types</h4>
-        <div class="diagram-tags">
-          <span class="dtag">Flowcharts</span>
-          <span class="dtag">ER Diagrams</span>
-          <span class="dtag">UML Class</span>
-          <span class="dtag">Circuit Diagrams</span>
-          <span class="dtag">State Machines</span>
-          <span class="dtag">Logic Gates</span>
-          <span class="dtag">Mind Maps</span>
-          <span class="dtag">Sequence Diagrams</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ==================== COLLABORATION ==================== -->
-  <section id="collaboration">
-    <div class="section-header">
-      <span class="section-tag">Multiplayer</span>
-      <h2>Built for teams that<br/><span class="gradient-text">think visually</span></h2>
-      <p class="section-subtitle">Share a link, start sketching. No installs, no friction.</p>
-    </div>
-    <div class="collab-features-row">
-      <div class="collab-feat">
-        <div class="collab-feat-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
-        </div>
-        <h4>Instant Sharing</h4>
-        <p>One link, no account required for guests. Jump right in.</p>
-      </div>
-      <div class="collab-feat">
-        <div class="collab-feat-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-        </div>
-        <h4>Live Cursors</h4>
-        <p>See everyone's position and what tool they're using in real time.</p>
-      </div>
-      <div class="collab-feat">
-        <div class="collab-feat-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        </div>
-        <h4>Conflict-Free</h4>
-        <p>CRDT-powered sync ensures no edits are ever lost or overwritten.</p>
-      </div>
-      <div class="collab-feat">
-        <div class="collab-feat-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
-        </div>
-        <h4>Instructor Mode</h4>
-        <p>Monitor all student boards in a live grid. Annotate, spotlight, and guide.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ==================== PERSONAS ==================== -->
-  <section id="personas">
-    <div class="section-header">
-      <span class="section-tag">Who It's For</span>
-      <h2>Built for how<br/><span class="gradient-text">you work and learn</span></h2>
-    </div>
-    <div class="personas-grid">
-      <div class="persona-card" id="persona-student">
-        <div class="persona-emoji">🎓</div>
-        <h3>Students</h3>
-        <p>Get instant AI feedback on your ER diagrams and flowcharts. Fix notation errors before submission and actually understand <em>why</em> something is wrong.</p>
-        <div class="persona-tag">CS, ECE, Database Design</div>
-      </div>
-      <div class="persona-card" id="persona-instructor">
-        <div class="persona-emoji">👨‍🏫</div>
-        <h3>Instructors</h3>
-        <p>Monitor 30 students simultaneously. The AI augments your attention — flagging issues so you can focus on the students who need you most.</p>
-        <div class="persona-tag">Lab Sessions, Design Reviews</div>
-      </div>
-      <div class="persona-card" id="persona-engineer">
-        <div class="persona-emoji">⚙️</div>
-        <h3>Engineering Teams</h3>
-        <p>Sketch microservice architectures and DB schemas during remote design reviews. AI sanity-checks your designs in real time.</p>
-        <div class="persona-tag">System Design, Architecture</div>
-      </div>
-      <div class="persona-card" id="persona-learner">
-        <div class="persona-emoji">🧠</div>
-        <h3>Self-Learners</h3>
-        <p>No peers, no problem. The AI is your sounding board — learn correct notation, get hints when stuck, and build confidence.</p>
-        <div class="persona-tag">CS Olympiad, Self-Study</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ==================== CTA ==================== -->
-  <section id="final-cta">
-    <div class="cta-bg">
-      <div class="gradient-orb orb-cta-1"></div>
-      <div class="gradient-orb orb-cta-2"></div>
-    </div>
-    <div class="cta-content">
-      <h2>Ready to sketch<br/><span class="gradient-text">something brilliant?</span></h2>
-      <p>Open a board in seconds. No account required. Free during beta.</p>
-      <div class="cta-buttons">
-        <a href="#" class="btn-primary btn-large" id="final-cta-btn">
-          <span>Open a Board</span>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        </a>
-      </div>
-      <p class="cta-note">No credit card · No signup · Instant access</p>
-    </div>
-  </section>
-
-  <!-- ==================== FOOTER ==================== -->
-  <footer id="main-footer">
-    <div class="footer-inner">
-      <div class="footer-brand">
-        <a href="#" class="nav-logo">
-          <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
-            <path d="M16 2L28 8V24L16 30L4 24V8L16 2Z" stroke="currentColor" stroke-width="2" fill="none"/>
-            <circle cx="16" cy="16" r="4" fill="currentColor" opacity="0.6"/>
-          </svg>
           <span>Daedalus</span>
         </a>
-        <p>Collaborative AI Whiteboard for visual thinkers.</p>
-      </div>
-      <div class="footer-links">
-        <div class="footer-col">
-          <h5>Product</h5>
-          <a href="#features">Features</a>
-          <a href="#ai-engine">AI Engine</a>
-          <a href="#collaboration">Collaboration</a>
-          <a href="#">Pricing</a>
-        </div>
-        <div class="footer-col">
-          <h5>Resources</h5>
-          <a href="#">Documentation</a>
-          <a href="#">Changelog</a>
-          <a href="#">API Reference</a>
-          <a href="#">Status</a>
-        </div>
-        <div class="footer-col">
-          <h5>Company</h5>
-          <a href="#">About</a>
-          <a href="#">Blog</a>
-          <a href="#">Careers</a>
-          <a href="#">Contact</a>
-        </div>
-      </div>
-    </div>
-    <div class="footer-bottom">
-      <p>&copy; 2026 Daedalus. All rights reserved.</p>
-      <div class="footer-legal">
-        <a href="#">Privacy</a>
-        <a href="#">Terms</a>
-        <a href="#">Security</a>
-      </div>
-    </div>
-  </footer>
 
-  <script src="script.js"></script>
+        <div class="nav-links">
+          <a href="#hero">Overview</a>
+          <a href="#cinematic-story">How It Works</a>
+          <a href="#features">Features</a>
+          <a href="#interactive-playground">Sandbox</a>
+          <a href="#ai-engine">AI Engine</a>
+          <a href="#personas">Who It's For</a>
+        </div>
+
+        <div class="nav-actions">
+          <!-- Web Audio Haptic Synth Toggle -->
+          <button class="sound-toggle-btn" id="sound-toggle" aria-label="Toggle UI Audio Synth" title="Enable UI audio synth">
+            <div class="sound-bars">
+              <span></span><span></span><span></span>
+            </div>
+            <span id="sound-label">Audio: Off</span>
+          </button>
+
+          <button type="button" class="btn-ghost btn-small auth-trigger" id="nav-signin-btn" data-auth-mode="signin">Sign In</button>
+          <button type="button" class="btn-primary btn-small magnetic-btn auth-trigger" id="nav-cta" data-auth-mode="signup">
+            <span>Start Free</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+
+        <button class="mobile-menu-btn" id="mobile-menu-toggle" aria-label="Toggle Navigation">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- ==================== HERO SECTION ==================== -->
+    <section id="hero">
+      <div class="hero-header">
+        <div class="hero-pill-badge magnetic-item" id="hero-badge">
+          <span class="badge-glow-dot"></span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.6 7.6 2.4-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"/></svg>
+          <span>Now in Public Beta</span>
+        </div>
+
+        <!-- SplitText Cascade Headline (Monochrome Chrome Metallic) -->
+        <h1 id="hero-title">
+          <span class="hero-line">
+            <span class="word-reveal">Draw</span> 
+            <span class="word-reveal">together.</span>
+          </span>
+          <span class="hero-line">
+            <span class="word-reveal gradient-text">Think</span> 
+            <span class="word-reveal gradient-text">together.</span>
+          </span>
+          <span class="hero-line">
+            <span class="word-reveal">Learn</span> 
+            <span class="word-reveal">together.</span>
+          </span>
+        </h1>
+
+        <p class="hero-lead" id="hero-lead">
+          A real-time collaborative whiteboard with an AI co-pilot that identifies your diagrams, explains concepts, and catches mistakes — before your instructor does.
+        </p>
+
+        <div class="hero-cta-group">
+          <button type="button" class="btn-primary btn-large magnetic-btn auth-trigger" id="hero-primary-cta" data-auth-mode="signup">
+            <span>Open a Board</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+          <a href="#cinematic-story" class="btn-ghost btn-large magnetic-btn" id="hero-secondary-cta">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span>See How It Works</span>
+          </a>
+        </div>
+
+        <!-- Metrics Stat Bar -->
+        <div class="hero-metrics-pill-bar">
+          <div class="metric-stat">
+            <div class="stat-number-wrap">
+              <span class="metric-val" data-target="88">0</span>
+              <span class="stat-suffix">%</span>
+            </div>
+            <span class="stat-title">AI Accuracy</span>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="metric-stat">
+            <div class="stat-number-wrap">
+              <span class="metric-val" data-target="100">0</span>
+              <span class="stat-suffix">ms</span>
+            </div>
+            <span class="stat-title">Sync Latency</span>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="metric-stat">
+            <div class="stat-number-wrap">
+              <span class="metric-val" data-target="25">0</span>
+              <span class="stat-suffix">+</span>
+            </div>
+            <span class="stat-title">Users / Board</span>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="metric-stat">
+            <div class="stat-number-wrap">
+              <span class="metric-val" data-target="10000">0</span>
+              <span class="stat-suffix">+</span>
+            </div>
+            <span class="stat-title">Diagrams Tested</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== THE CENTERPIECE HERO BOARD ==================== -->
+      <div class="hero-board-perspective-wrapper">
+        <div class="hero-board-card tilt-card" id="hero-board-card">
+          <div class="board-spotlight-glare"></div>
+
+          <div class="board-window-chrome">
+            <div class="chrome-window-dots">
+              <span></span><span></span><span></span>
+            </div>
+            <div class="chrome-session-pill">
+              <span class="chrome-live-pulse"></span>
+              <span class="chrome-session-title">daedalus://distributed-auth-flow.board</span>
+            </div>
+            <div class="chrome-collaborator-stack">
+              <div class="avatar-stack-group">
+                <div class="avatar-pill" title="Priya (Lead Architect)">P</div>
+                <div class="avatar-pill" title="Sofia (Frontend)">S</div>
+                <div class="avatar-pill" title="Alex (Backend)">A</div>
+                <div class="avatar-pill" title="Daedalus AI Bot">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="board-viewport" id="hero-canvas-container">
+            <canvas id="hero-interactive-canvas"></canvas>
+
+            <!-- Floating AI Copilot HUD Card -->
+            <div class="floating-ai-hud-card tilt-subcard" id="hero-ai-hud">
+              <div class="hud-header">
+                <div class="hud-sparkle-icon">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2a4 4 0 014 4v1a2 2 0 012 2v1a2 2 0 01-2 2H8a2 2 0 01-2-2V9a2 2 0 012-2V6a4 4 0 014-4z"/><path d="M9 22v-4a3 3 0 016 0v4"/><circle cx="9" cy="9" r="1.5"/><circle cx="15" cy="9" r="1.5"/></svg>
+                </div>
+                <span>AI Explainer Co-Pilot</span>
+                <div class="hud-stream-badge">
+                  <span class="hud-stream-dot"></span>
+                  <span>Active</span>
+                </div>
+              </div>
+              <div class="hud-body">
+                <div class="hud-detection-chip">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
+                  <span>ER Diagram — Chen Notation</span>
+                  <span class="hud-confidence">94.8%</span>
+                </div>
+                <p class="hud-msg" id="hero-ai-msg-1">I see two entities connected by a relationship diamond. This follows Chen notation.</p>
+                <p class="hud-msg" id="hero-ai-msg-2" style="color: #ffffff; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span>Cardinality labels (1:N) verified on relationships.</span>
+                </p>
+                <button class="hud-action-btn" id="hero-ai-action-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  <span>Auto-Synthesize PostgreSQL Schema</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Live Collaborator Cursors -->
+            <div class="board-live-cursor" id="cursor-priya">
+              <svg class="cursor-arrow-svg" width="18" height="22" viewBox="0 0 16 20"><path d="M0 0L16 12L8 12L4 20L0 0Z" fill="#ffffff"/></svg>
+              <span class="cursor-user-tag">Priya</span>
+            </div>
+            <div class="board-live-cursor" id="cursor-sofia">
+              <svg class="cursor-arrow-svg" width="18" height="22" viewBox="0 0 16 20"><path d="M0 0L16 12L8 12L4 20L0 0Z" fill="#a1a1aa"/></svg>
+              <span class="cursor-user-tag">Sofia</span>
+            </div>
+
+            <!-- macOS Floating Tool Dock -->
+            <div class="board-mac-dock">
+              <div class="dock-tool active" title="Select / Move"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7 18 3-7 7-3L3 3z"/></svg></div>
+              <div class="dock-tool" title="Rectangle"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>
+              <div class="dock-tool" title="Relationship Diamond"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 12l10 10 10-10L12 2z"/></svg></div>
+              <div class="dock-tool" title="Attribute Ellipse"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg></div>
+              <div class="dock-tool" title="Connector Line"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+              <div class="dock-separator-bar"></div>
+              <div class="dock-tool" title="AI Vision Scan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07l14.14-14.14"/></svg></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TRUST / SOCIAL PROOF ==================== -->
+    <section id="trust-bar">
+      <p>Trusted by engineering leaders, researchers & top university teams at</p>
+      <div class="trust-logos-row">
+        <span class="trust-brand-pill">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          Stanford CS
+        </span>
+        <span class="trust-brand-pill">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>
+          MIT Media Lab
+        </span>
+        <span class="trust-brand-pill">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15 8 22 9 17 14 18 21 12 17 6 21 7 14 2 9 9 8 12 2"/></svg>
+          UC Berkeley
+        </span>
+        <span class="trust-brand-pill">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+          Carnegie Mellon
+        </span>
+        <span class="trust-brand-pill">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg>
+          Georgia Tech
+        </span>
+      </div>
+    </section>
+
+    <!-- ==================== PINNED CINEMATIC AI STORYLINE ==================== -->
+    <section id="cinematic-story">
+      <div class="cinematic-pinned-wrapper" id="story-container">
+        <div class="story-left-col">
+          <div class="story-stage-card active" id="story-step-1">
+            <div class="stage-step-tag">PHASE 01 / REAL-TIME DRAFTING</div>
+            <h3>Freehand & Vector Precision</h3>
+            <p>
+              Draw shapes, squiggles, and technical connections with sub-millisecond responsiveness.
+              Daedalus is purpose-built for engineers, students, and remote design sprints.
+            </p>
+            <div class="stage-feature-pills">
+              <span class="stage-feature-pill">Sub-100ms Sync</span>
+              <span class="stage-feature-pill">Vector Precision</span>
+              <span class="stage-feature-pill">Magnetic Connectors</span>
+            </div>
+          </div>
+
+          <div class="story-stage-card" id="story-step-2">
+            <div class="stage-step-tag">PHASE 02 / MULTIMODAL SCAN</div>
+            <h3>AI Vision Scanner</h3>
+            <p>
+              The vision copilot continuously inspects the canvas in the background.
+              It identifies node semantics, entities, relationships, and data flows using multimodal neural networks.
+            </p>
+            <div class="stage-feature-pills">
+              <span class="stage-feature-pill">Multimodal OCR</span>
+              <span class="stage-feature-pill">Chen & UML Parser</span>
+              <span class="stage-feature-pill">Semantics Extraction</span>
+            </div>
+          </div>
+
+          <div class="story-stage-card" id="story-step-3">
+            <div class="stage-step-tag">PHASE 03 / LINTING & REASONING</div>
+            <h3>Smart Notation Guardrails</h3>
+            <p>
+              Accidentally mixing Crow's Foot and Chen notations? Missing foreign keys or deadlock cycles?
+              The AI highlights problems before your instructor or team lead ever sees them.
+            </p>
+            <div class="stage-feature-pills">
+              <span class="stage-feature-pill">Notation Linter</span>
+              <span class="stage-feature-pill">Deadlock Detection</span>
+              <span class="stage-feature-pill">Cardinality Check</span>
+            </div>
+          </div>
+
+          <div class="story-stage-card" id="story-step-4">
+            <div class="stage-step-tag">PHASE 04 / SYNTHESIS & EXPORT</div>
+            <h3>One-Click Schema Synthesis</h3>
+            <p>
+              Turn whiteboard sketches into production-ready artifacts in one tap.
+              Export directly to SQL DDL, Prisma schemas, TypeScript interfaces, or Mermaid diagrams.
+            </p>
+            <div class="stage-feature-pills">
+              <span class="stage-feature-pill">PostgreSQL DDL</span>
+              <span class="stage-feature-pill">Prisma ORM</span>
+              <span class="stage-feature-pill">TypeScript Models</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="story-right-col">
+          <div class="story-screen-mockup" id="story-mockup">
+            <div class="story-screen-chrome">
+              <div class="chrome-window-dots"><span></span><span></span><span></span></div>
+              <span class="chrome-session-title" id="story-mockup-title">AI Engine Inspector — Realtime Feed</span>
+            </div>
+            <div class="story-screen-body">
+              <div class="story-laser-scanner" id="story-laser"></div>
+              
+              <svg class="story-canvas-svg" id="story-svg" viewBox="0 0 600 400">
+                <!-- Grid Background -->
+                <g opacity="0.12" stroke="#ffffff" stroke-dasharray="2,4">
+                  <line x1="50" y1="0" x2="50" y2="400"/>
+                  <line x1="150" y1="0" x2="150" y2="400"/>
+                  <line x1="250" y1="0" x2="250" y2="400"/>
+                  <line x1="350" y1="0" x2="350" y2="400"/>
+                  <line x1="450" y1="0" x2="450" y2="400"/>
+                  <line x1="550" y1="0" x2="550" y2="400"/>
+                </g>
+
+                <!-- Connection Lines -->
+                <path id="svg-conn-1" d="M 160 180 L 260 180" stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-dasharray="6,4" fill="none"/>
+                <path id="svg-conn-2" d="M 340 180 L 440 180" stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-dasharray="6,4" fill="none"/>
+                <path id="svg-conn-3" d="M 110 140 L 110 80" stroke="rgba(255,255,255,0.5)" stroke-width="1.8" stroke-dasharray="4,4" fill="none"/>
+                <path id="svg-conn-4" d="M 490 140 L 490 80" stroke="rgba(255,255,255,0.5)" stroke-width="1.8" stroke-dasharray="4,4" fill="none"/>
+
+                <!-- Shape 1: USER Entity -->
+                <g id="svg-node-user" transform="translate(60, 140)">
+                  <rect width="100" height="80" rx="10" fill="#141414" stroke="#ffffff" stroke-width="2"/>
+                  <text x="50" y="45" fill="#ffffff" font-family="'JetBrains Mono', monospace" font-size="14" font-weight="700" text-anchor="middle">USER</text>
+                  <text x="50" y="62" fill="#a1a1aa" font-size="10" text-anchor="middle">«Entity»</text>
+                </g>
+
+                <!-- Shape 2: PLACES Relationship Diamond -->
+                <g id="svg-node-rel" transform="translate(300, 180)">
+                  <polygon points="0,-40 40,0 0,40 -40,0" fill="#141414" stroke="#d4d4d8" stroke-width="2"/>
+                  <text x="0" y="5" fill="#ffffff" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" text-anchor="middle">PLACES</text>
+                </g>
+
+                <!-- Shape 3: ORDER Entity -->
+                <g id="svg-node-order" transform="translate(440, 140)">
+                  <rect width="100" height="80" rx="10" fill="#141414" stroke="#ffffff" stroke-width="2"/>
+                  <text x="50" y="45" fill="#ffffff" font-family="'JetBrains Mono', monospace" font-size="14" font-weight="700" text-anchor="middle">ORDER</text>
+                  <text x="50" y="62" fill="#a1a1aa" font-size="10" text-anchor="middle">«Entity»</text>
+                </g>
+
+                <!-- Shape 4: Attribute Ellipse -->
+                <g id="svg-attr-user" transform="translate(110, 60)">
+                  <ellipse rx="45" ry="22" fill="#141414" stroke="#a1a1aa" stroke-width="1.8"/>
+                  <text x="0" y="5" fill="#ffffff" font-family="'JetBrains Mono', monospace" font-size="11" text-anchor="middle">user_id [PK]</text>
+                </g>
+
+                <!-- Shape 5: Attribute Ellipse -->
+                <g id="svg-attr-order" transform="translate(490, 60)">
+                  <ellipse rx="45" ry="22" fill="#141414" stroke="#a1a1aa" stroke-width="1.8"/>
+                  <text x="0" y="5" fill="#ffffff" font-family="'JetBrains Mono', monospace" font-size="11" text-anchor="middle">total_cents</text>
+                </g>
+
+                <!-- AI Overlay Diagnostic Output -->
+                <g id="svg-ai-overlay" opacity="0">
+                  <rect x="250" y="240" width="100" height="30" rx="6" fill="rgba(255, 255, 255, 0.08)" stroke="#ffffff" stroke-width="1.5"/>
+                  <text x="300" y="260" fill="#ffffff" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" text-anchor="middle">1 : N Validated</text>
+
+                  <rect x="40" y="320" width="520" height="50" rx="8" fill="rgba(255, 255, 255, 0.05)" stroke="rgba(255, 255, 255, 0.2)" stroke-width="1.5"/>
+                  <text x="60" y="350" fill="#d4d4d8" font-family="'JetBrains Mono', monospace" font-size="11">CREATE TABLE users (id UUID PRIMARY KEY, name VARCHAR);</text>
+                </g>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== PINNED HORIZONTAL SCROLL SHOWCASE ==================== -->
+    <section id="horizontal-scroll-section">
+      <div class="horizontal-outer-container" id="horizontal-outer">
+        <div class="horizontal-header-strip">
+          <span class="section-pill">Supported Paradigms</span>
+          <h2>Visual Intelligence Across <span class="gradient-text">Every Domain</span></h2>
+          <p class="section-subtitle">Scroll down to explore how Daedalus analyzes different technical diagram models.</p>
+        </div>
+
+        <div class="horizontal-track-container" id="horizontal-track">
+          <!-- Slide 1 -->
+          <div class="horizontal-slide-card">
+            <div>
+              <span class="h-card-tag">PARADIGM 01</span>
+              <h3 class="h-card-title">Entity-Relationship Diagrams</h3>
+              <p class="h-card-desc">Recognizes Chen notation, Crow's foot, and Barker notation. Identifies candidate keys, cardinalities, and normalizes tables to 3NF automatically.</p>
+            </div>
+            <div class="h-card-preview-area">
+              <svg width="220" height="120" viewBox="0 0 220 120">
+                <rect x="20" y="35" width="60" height="50" rx="6" fill="#141414" stroke="#ffffff" stroke-width="1.8"/>
+                <text x="50" y="65" fill="#fff" font-size="10" font-family="'JetBrains Mono', monospace" text-anchor="middle">USER</text>
+                <polygon points="110,40 135,60 110,80 85,60" fill="#141414" stroke="#d4d4d8" stroke-width="1.8"/>
+                <rect x="140" y="35" width="60" height="50" rx="6" fill="#141414" stroke="#ffffff" stroke-width="1.8"/>
+                <text x="170" y="65" fill="#fff" font-size="10" font-family="'JetBrains Mono', monospace" text-anchor="middle">ROLE</text>
+                <line x1="80" y1="60" x2="85" y2="60" stroke="#a1a1aa" stroke-width="1.8"/>
+                <line x1="135" y1="60" x2="140" y2="60" stroke="#a1a1aa" stroke-width="1.8"/>
+              </svg>
+            </div>
+            <span class="stage-feature-pill" style="align-self: flex-start;">Database Schema Design</span>
+          </div>
+
+          <!-- Slide 2 -->
+          <div class="horizontal-slide-card">
+            <div>
+              <span class="h-card-tag">PARADIGM 02</span>
+              <h3 class="h-card-title">Microservice Cloud Architectures</h3>
+              <p class="h-card-desc">Maps out API Gateways, Kafka queues, serverless lambdas, and Redis caches. Flags single points of failure and networking bottlenecks.</p>
+            </div>
+            <div class="h-card-preview-area">
+              <svg width="220" height="120" viewBox="0 0 220 120">
+                <rect x="15" y="45" width="50" height="30" rx="4" fill="#141414" stroke="#ffffff" stroke-width="1.8"/>
+                <text x="40" y="64" fill="#fff" font-size="9" text-anchor="middle">Client</text>
+                <rect x="85" y="35" width="55" height="50" rx="6" fill="#141414" stroke="#d4d4d8" stroke-width="1.8"/>
+                <text x="112" y="63" fill="#d4d4d8" font-size="9" text-anchor="middle">Gateway</text>
+                <circle cx="185" cy="40" r="18" fill="#141414" stroke="#a1a1aa" stroke-width="1.8"/>
+                <text x="185" y="44" fill="#fff" font-size="8" text-anchor="middle">Auth</text>
+                <circle cx="185" cy="85" r="18" fill="#141414" stroke="#a1a1aa" stroke-width="1.8"/>
+                <text x="185" y="89" fill="#fff" font-size="8" text-anchor="middle">Pay</text>
+                <line x1="65" y1="60" x2="85" y2="60" stroke="#fff" stroke-width="1.5" stroke-dasharray="2,2"/>
+                <line x1="140" y1="50" x2="167" y2="40" stroke="#fff" stroke-width="1.5"/>
+                <line x1="140" y1="70" x2="167" y2="85" stroke="#fff" stroke-width="1.5"/>
+              </svg>
+            </div>
+            <span class="stage-feature-pill" style="align-self: flex-start;">Cloud Systems & DevOps</span>
+          </div>
+
+          <!-- Slide 3 -->
+          <div class="horizontal-slide-card">
+            <div>
+              <span class="h-card-tag">PARADIGM 03</span>
+              <h3 class="h-card-title">Flowcharts & Decision Trees</h3>
+              <p class="h-card-desc">Tracks algorithm branching logic, loops, terminators, and state transitions. Verifies that every decision branch resolves to a valid exit condition.</p>
+            </div>
+            <div class="h-card-preview-area">
+              <svg width="220" height="120" viewBox="0 0 220 120">
+                <rect x="80" y="10" width="60" height="24" rx="12" fill="#141414" stroke="#ffffff" stroke-width="1.8"/>
+                <text x="110" y="26" fill="#fff" font-size="9" text-anchor="middle">START</text>
+                <polygon points="110,48 140,68 110,88 80,68" fill="#141414" stroke="#d4d4d8" stroke-width="1.8"/>
+                <text x="110" y="72" fill="#fff" font-size="9" text-anchor="middle">x &gt; 0 ?</text>
+                <line x1="110" y1="34" x2="110" y2="48" stroke="#fff" stroke-width="1.5"/>
+                <line x1="140" y1="68" x2="180" y2="68" stroke="#fff" stroke-width="1.5"/>
+                <line x1="80" y1="68" x2="40" y2="68" stroke="#71717a" stroke-width="1.5"/>
+              </svg>
+            </div>
+            <span class="stage-feature-pill" style="align-self: flex-start;">Algorithms & Logic Trees</span>
+          </div>
+
+          <!-- Slide 4 -->
+          <div class="horizontal-slide-card">
+            <div>
+              <span class="h-card-tag">PARADIGM 04</span>
+              <h3 class="h-card-title">Digital Logic & Circuit Gates</h3>
+              <p class="h-card-desc">Detects AND, OR, XOR, NAND gates, flip-flops, and bus wiring. Calculates live Boolean truth tables and warns against floating inputs.</p>
+            </div>
+            <div class="h-card-preview-area">
+              <svg width="220" height="120" viewBox="0 0 220 120">
+                <path d="M 60 40 L 90 40 C 110 40 110 70 90 70 L 60 70 Z" fill="#141414" stroke="#ffffff" stroke-width="1.8"/>
+                <text x="80" y="58" fill="#fff" font-size="10" text-anchor="middle">AND</text>
+                <line x1="30" y1="46" x2="60" y2="46" stroke="#fff" stroke-width="1.5"/>
+                <line x1="30" y1="64" x2="60" y2="64" stroke="#fff" stroke-width="1.5"/>
+                <line x1="105" y1="55" x2="150" y2="55" stroke="#fff" stroke-width="1.5"/>
+              </svg>
+            </div>
+            <span class="stage-feature-pill" style="align-self: flex-start;">ECE & Computer Engineering</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== FEATURES SECTION ==================== -->
+    <section id="features">
+      <div class="section-header">
+        <span class="section-pill">Core Engine</span>
+        <h2>Unified Canvas with <span class="gradient-text">Visual Intelligence</span></h2>
+        <p class="section-subtitle">Real-time vector mechanics paired with high-performance vision models.</p>
+      </div>
+
+      <div class="features-grid-layout">
+        <!-- Spotlight Card 1 (Span 2) -->
+        <div class="spotlight-glass-card span-col-2 tilt-card">
+          <div class="feature-icon-badge">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
+          </div>
+          <h3>Infinite High-Precision Vector Canvas</h3>
+          <p>Pan, zoom, and sketch across an unconstrained coordinate space. Built on optimized canvas graphics with sub-pixel rendering, snap-to-grid, orthogonal magnetic connectors, and zero stutter.</p>
+          
+          <div class="feature-demo-window">
+            <div style="display: flex; gap: 24px; align-items: center;">
+              <div style="width: 80px; height: 50px; background: #141414; border: 1.5px solid #ffffff; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff;">Service</div>
+              <svg width="40" height="20"><line x1="0" y1="10" x2="40" y2="10" stroke="#ffffff" stroke-width="2" stroke-dasharray="4,4"/></svg>
+              <div style="width: 50px; height: 50px; background: #141414; border: 1.5px solid #d4d4d8; transform: rotate(45deg); display: flex; align-items: center; justify-content: center;"><span style="transform: rotate(-45deg); font-size: 10px; font-weight: 700; color: #fff;">Filter</span></div>
+              <svg width="40" height="20"><line x1="0" y1="10" x2="40" y2="10" stroke="#a1a1aa" stroke-width="2"/></svg>
+              <div style="width: 50px; height: 50px; background: #141414; border: 1.5px solid #ffffff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff;">DB</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Spotlight Card 2 -->
+        <div class="spotlight-glass-card tilt-card">
+          <div class="feature-icon-badge">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+          </div>
+          <h3>Under 100ms Sync Latency</h3>
+          <p>Multiplayer synchronization powered by Conflict-free Replicated Data Types (CRDTs). Edits merge deterministically without lag or locks.</p>
+          <div class="feature-demo-window" style="min-height: 120px;">
+            <div style="font-family: var(--font-mono); font-size: 2.2rem; font-weight: 850; color: #ffffff;">38ms <span style="font-size: 1rem; color: var(--text-dim);">RTT avg</span></div>
+          </div>
+        </div>
+
+        <!-- Spotlight Card 3 -->
+        <div class="spotlight-glass-card tilt-card">
+          <div class="feature-icon-badge">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+          <h3>Smart Diagram Linting</h3>
+          <p>Automated static analysis flags structural bugs, missing cardinalities, and broken conventions before peer review.</p>
+          <div class="feature-demo-window">
+            <div style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
+              <div style="padding: 8px 14px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-medium); border-radius: 8px; font-size: 0.78rem; color: #ffffff; display: flex; align-items: center; gap: 8px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span>Inconsistent Crow's Foot Cardinality</span>
+              </div>
+              <div style="padding: 8px 14px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-medium); border-radius: 8px; font-size: 0.78rem; color: #d4d4d8; display: flex; align-items: center; gap: 8px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d4d4d8" stroke-width="2"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0018 8 6 6 0 006 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 018.91 14"/></svg>
+                <span>Missing Primary Key on 'payments'</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Conic Border Card (ReactBits) -->
+        <div class="conic-laser-card span-col-2">
+          <div class="conic-card-body">
+            <div class="feature-icon-badge">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            </div>
+            <h3>Direct Code Generation Engine</h3>
+            <p>One-click compiler parses whiteboard visual topologies into clean, production-ready schema code in Postgres SQL, Prisma ORM, TypeScript Interfaces, or GraphQL schemas.</p>
+            <div class="feature-demo-window" style="background: #060606; font-family: var(--font-mono); font-size: 0.82rem; color: #d4d4d8; text-align: left; display: block; overflow-x: auto;">
+              <span style="color: #ffffff; font-weight: 700;">export interface</span> UserSession {<br/>
+              &nbsp;&nbsp;id: <span style="color: #ffffff;">string</span>;<br/>
+              &nbsp;&nbsp;userId: <span style="color: #ffffff;">string</span>;<br/>
+              &nbsp;&nbsp;expiresAt: <span style="color: #ffffff;">Date</span>;<br/>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== INTERACTIVE WHITEBOARD PLAYGROUND ==================== -->
+    <section id="interactive-playground">
+      <div class="section-header">
+        <span class="section-pill">Interactive Sandbox</span>
+        <h2>Test the Board Right Now <span class="gradient-text">In Your Browser</span></h2>
+        <p class="section-subtitle">Click to spawn diagram nodes, drag them with spring physics, and trigger instant AI analysis.</p>
+      </div>
+
+      <div class="playground-shell-card">
+        <div class="playground-action-bar">
+          <button class="pg-tool-pill active" id="pg-add-entity">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+            <span>+ Entity</span>
+          </button>
+          <button class="pg-tool-pill" id="pg-add-rel">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 12l10 10 10-10L12 2z"/></svg>
+            <span>+ Relationship</span>
+          </button>
+          <button class="pg-tool-pill" id="pg-add-attr">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
+            <span>+ Attribute</span>
+          </button>
+
+          <div style="margin-left: auto; display: flex; gap: 10px;">
+            <button class="pg-tool-pill" id="pg-clear">Clear</button>
+            <button class="pg-tool-pill active" id="pg-ai-analyze">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              <span>AI Inspect</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="pg-canvas-wrapper" id="pg-area">
+          <canvas id="playground-live-canvas"></canvas>
+
+          <!-- AI Toast Feedback -->
+          <div class="pg-toast-alert" id="pg-toast">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>
+            <div>
+              <div style="font-size: 0.85rem; font-weight: 800; color: #fff;" id="pg-toast-title">Chen ER Diagram Verified</div>
+              <div style="font-size: 0.78rem; color: var(--text-muted);" id="pg-toast-desc">Relationships & Cardinalities are structurally sound.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TRIG.JS HARMONIC WAVE & AI FLOW ==================== -->
+    <section id="ai-engine">
+      <div class="section-header">
+        <span class="section-pill">Trigonometric Pipeline</span>
+        <h2>High-Velocity Multimodal Stream <span class="gradient-text">Without Layout Shift</span></h2>
+        <p class="section-subtitle">Real-time harmonic signal processing driven by pure trigonometric math.</p>
+      </div>
+
+      <!-- Trig.js Harmonic Wave Ribbon in Silver/White -->
+      <div class="trig-wave-wrapper">
+        <svg id="trig-wave-svg" viewBox="0 0 1200 80" preserveAspectRatio="none">
+          <path id="trig-wave-path-1" fill="none" stroke="rgba(255, 255, 255, 0.45)" stroke-width="2.5"/>
+          <path id="trig-wave-path-2" fill="none" stroke="rgba(255, 255, 255, 0.25)" stroke-width="1.8"/>
+          <path id="trig-wave-path-3" fill="none" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1.5"/>
+        </svg>
+      </div>
+
+      <div class="ai-pipeline-grid">
+        <div class="pipeline-card tilt-card">
+          <div class="pipeline-step-badge">STEP 01</div>
+          <div class="feature-icon-badge"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg></div>
+          <h3>Vector Pen & Shapes</h3>
+          <p>Draw freehand curves, drop formal engineering notation, or connect nodes with magnetic bezier lines.</p>
+        </div>
+
+        <div class="pipeline-card tilt-card">
+          <div class="pipeline-step-badge">STEP 02</div>
+          <div class="feature-icon-badge"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></div>
+          <h3>Multimodal Neural Scan</h3>
+          <p>The vision copilot parses topology, texts, and relationships without manual prompts or context setting.</p>
+        </div>
+
+        <div class="pipeline-card tilt-card">
+          <div class="pipeline-step-badge">STEP 03</div>
+          <div class="feature-icon-badge"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg></div>
+          <h3>Actionable Synthesis</h3>
+          <p>Receive inline explanations, fix suggestions, and instant code generation right in your board side panel.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== WHO IT'S FOR (PERSONAS - PURE VECTOR ICONS) ==================== -->
+    <section id="personas">
+      <div class="section-header">
+        <span class="section-pill">Target Personas</span>
+        <h2>Built for Engineers, Instructors <span class="gradient-text">& Visual Thinkers</span></h2>
+        <p class="section-subtitle">Tailored experience whether you are lecturing 60 students or designing distributed systems.</p>
+      </div>
+
+      <div class="personas-grid-layout">
+        <!-- Persona 1: Students -->
+        <div class="persona-target-card tilt-card">
+          <div class="persona-icon-badge">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+          </div>
+          <h3>Computer Science Students</h3>
+          <p>Practice ER diagrams, automata, and circuit diagrams with instant automated grading and conceptual hints before assignment due dates.</p>
+          <span class="persona-label-tag">CS & Data Systems</span>
+        </div>
+
+        <!-- Persona 2: Professors -->
+        <div class="persona-target-card tilt-card">
+          <div class="persona-icon-badge">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h20v14H2z"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 8l3 3 2-2 4 4"/></svg>
+          </div>
+          <h3>Professors & TAs</h3>
+          <p>Broadcast whiteboards to students, view live thumbnail grids of all classroom boards, and spotlight common architectural mistakes live.</p>
+          <span class="persona-label-tag">Higher Education</span>
+        </div>
+
+        <!-- Persona 3: Architects -->
+        <div class="persona-target-card tilt-card">
+          <div class="persona-icon-badge">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+          </div>
+          <h3>Software Architects</h3>
+          <p>Collaboratively brainstorm microservices, database migrations, and distributed flows during remote design reviews with instant SQL export.</p>
+          <span class="persona-label-tag">System Design</span>
+        </div>
+
+        <!-- Persona 4: Self-Learners -->
+        <div class="persona-target-card tilt-card">
+          <div class="persona-icon-badge">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+          </div>
+          <h3>Self-Taught Developers</h3>
+          <p>No mentor? No problem. The multimodal AI acts as a dedicated 24/7 tutor, explaining why an architecture won't scale and how to fix it.</p>
+          <span class="persona-label-tag">Self-Study</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== FINAL CALL TO ACTION ==================== -->
+    <section id="final-cta">
+      <div class="cta-vortex-glow"></div>
+      <div class="cta-box-content">
+        <span class="section-pill">Ready to build?</span>
+        <h2>Start Sketching With <span class="gradient-text">Your AI Co-Pilot</span></h2>
+        <p>No credit card required. Instant multiplayer room creation. Free during public beta.</p>
+        <div style="display: flex; gap: 18px; justify-content: center; flex-wrap: wrap;">
+          <button type="button" class="btn-primary btn-large magnetic-btn auth-trigger" id="footer-cta" data-auth-mode="signup">
+            <span>Open Daedalus Whiteboard</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== FOOTER ==================== -->
+    <footer id="main-footer">
+      <div class="footer-inner-wrap">
+        <div class="footer-brand-col">
+          <a href="#" class="nav-brand">
+            <div class="brand-icon-wrap">
+              <svg class="brand-icon" viewBox="0 0 32 32" fill="none">
+                <path d="M16 2L28 8V24L16 30L4 24V8L16 2Z" stroke="#ffffff" stroke-width="2.2"/>
+                <circle cx="16" cy="16" r="3.5" fill="#ffffff"/>
+              </svg>
+            </div>
+            <span>Daedalus</span>
+          </a>
+          <p>Next-generation collaborative whiteboard with real-time multimodal AI analysis for engineering teams and educators.</p>
+          <div class="footer-sys-badge">
+            <span class="hud-stream-dot"></span>
+            <span>All Systems Operational (99.98%)</span>
+          </div>
+        </div>
+
+        <div class="footer-nav-columns">
+          <div class="footer-nav-col">
+            <h5>Product</h5>
+            <a href="#hero">Overview</a>
+            <a href="#cinematic-story">Live Story</a>
+            <a href="#features">Features</a>
+            <a href="#interactive-playground">Sandbox</a>
+          </div>
+          <div class="footer-nav-col">
+            <h5>Diagrams</h5>
+            <a href="#horizontal-scroll-section">Entity Relationship</a>
+            <a href="#horizontal-scroll-section">Cloud Microservices</a>
+            <a href="#horizontal-scroll-section">Flowcharts</a>
+            <a href="#horizontal-scroll-section">Logic Gates</a>
+          </div>
+          <div class="footer-nav-col">
+            <h5>Engine</h5>
+            <a href="#">CRDT Real-time</a>
+            <a href="#">Multimodal AI</a>
+            <a href="#">SQL Generator</a>
+            <a href="#">API Docs</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-sub-bar">
+        <p>&copy; 2026 Daedalus Technologies Inc. All rights reserved.</p>
+        <div class="footer-scroll-velocity" id="scroll-velocity-indicator">Scroll Velocity: 0 px/s</div>
+        <div style="display: flex; gap: 20px;">
+          <a href="#">Privacy</a>
+          <a href="#">Terms</a>
+          <a href="#">Security</a>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ==================== MONOCHROME AUTH MODAL ==================== -->
+  <div class="auth-modal-overlay" id="auth-modal-overlay" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="auth-modal-card">
+      <button class="auth-modal-close" id="auth-modal-close" aria-label="Close modal">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+
+      <div class="auth-header">
+        <div class="auth-logo-badge">
+          <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+            <path d="M16 2L28 8V24L16 30L4 24V8L16 2Z" stroke="#ffffff" stroke-width="2.4"/>
+            <circle cx="16" cy="16" r="3.5" fill="#ffffff"/>
+          </svg>
+        </div>
+        <h3 id="auth-title">Welcome to Daedalus</h3>
+        <p id="auth-subtitle">Sign in to sync your collaborative whiteboard</p>
+      </div>
+
+      <div class="auth-tab-switch">
+        <button type="button" class="auth-tab-btn active" id="tab-signin" data-tab="signin">Sign In</button>
+        <button type="button" class="auth-tab-btn" id="tab-signup" data-tab="signup">Create Account</button>
+      </div>
+
+      <form class="auth-form" id="auth-form" novalidate>
+        <div class="auth-field" id="field-name-wrap" style="display: none;">
+          <label for="auth-name">Full Name</label>
+          <input type="text" id="auth-name" class="auth-input" placeholder="e.g. Satoshi Nakamoto" autocomplete="name" />
+        </div>
+
+        <div class="auth-field">
+          <label for="auth-email">Email Address</label>
+          <input type="email" id="auth-email" class="auth-input" placeholder="name@example.com" autocomplete="email" required />
+        </div>
+
+        <div class="auth-field">
+          <label for="auth-password">Password</label>
+          <input type="password" id="auth-password" class="auth-input" placeholder="••••••••••••" autocomplete="current-password" required />
+        </div>
+
+        <div class="auth-field" id="field-role-wrap" style="display: none;">
+          <label>Workspace Role</label>
+          <div class="auth-role-group">
+            <button type="button" class="auth-role-option active" data-role="owner">Owner</button>
+            <button type="button" class="auth-role-option" data-role="instructor">Instructor</button>
+          </div>
+        </div>
+
+        <div class="auth-error-msg" id="auth-error" role="alert"></div>
+
+        <button type="submit" class="auth-submit-btn" id="auth-submit-btn">
+          <span>Sign In</span>
+        </button>
+      </form>
+
+      <div class="auth-guest-divider">or continue without account</div>
+
+      <button type="button" class="auth-guest-btn" id="auth-guest-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>Instant Guest Access (Launch Board)</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Primary Application Script with ES Module & Fallback Support -->
+  <script type="module" src="./script.js"></script>
 </body>
 </html>

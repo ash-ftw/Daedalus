@@ -1,8 +1,43 @@
-# Collaborative AI Whiteboard
+# Daedalus — The Living Neural Whiteboard
 
-MVP implementation for the PRD in `PRD_Collaborative_AI_Whiteboard.md`.
+[![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
+[![GitHub Repository](https://img.shields.io/badge/GitHub-ash--ftw%2FDaedalus-black.svg)](https://github.com/ash-ftw/Daedalus)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-white.svg)](CONTRIBUTING.md)
 
-## What Is Built
+Draw together. Think together. Learn together. A real-time collaborative whiteboard with an AI co-pilot that identifies diagrams, explains concepts, and catches mistakes in real time.
+
+## Project Structure
+
+```text
+client/         React 18 + Fabric.js collaborative whiteboard application
+landing/        Cinematic monochrome landing page (GSAP, Lenis, Three.js, Anime.js)
+server/         Express API, Socket.IO real-time engine, Yjs CRDT synchronization
+shared/         Shared TypeScript contracts and data models
+```
+
+## Quick Start
+
+```bash
+# Install dependencies
+npm install
+
+# Start backend (3001) and collaborative canvas app (5173)
+npm run dev
+
+# Start cinematic monochrome landing page (3333)
+npm run dev:landing
+```
+
+- Landing Page: [http://127.0.0.1:3333](http://127.0.0.1:3333)
+- Whiteboard App: [http://127.0.0.1:5173](http://127.0.0.1:5173)
+- API Service: [http://127.0.0.1:3001](http://127.0.0.1:3001)
+
+## Contributing & Open Source
+
+Daedalus is an open-source project hosted at [github.com/ash-ftw/Daedalus](https://github.com/ash-ftw/Daedalus).
+Please read our [Contributing Guide](CONTRIBUTING.md) and [Security Policy](SECURITY.md) before submitting pull requests.
+
+## Core Capabilities
 
 - React 18 + TypeScript browser whiteboard using Fabric.js.
 - Drawing tools for selection, pan, freehand pen, eraser, rectangles, ellipses, diamonds, connectors, text, and sticky notes.
