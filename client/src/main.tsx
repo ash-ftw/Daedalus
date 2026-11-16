@@ -9,8 +9,11 @@ import "./landing.css";
 type View = "landing" | "signin" | "signup" | "app";
 
 function Root() {
-  const hasToken = !!window.localStorage.getItem("daedalus.authToken");
-  const [view, setView] = useState<View>(hasToken ? "app" : "landing");
+  const params = new URLSearchParams(window.location.search);
+  const hasToken = !!window.localStorage.getItem("daedalus.authToken") || !!params.get("token");
+  const hasRoom = !!params.get("room");
+  const isDirectApp = window.location.pathname.startsWith("/app") || window.location.pathname.startsWith("/board");
+  const [view, setView] = useState<View>(hasToken || hasRoom || isDirectApp ? "app" : "landing");
 
   if (view === "landing") {
     return (

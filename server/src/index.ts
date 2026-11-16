@@ -1191,15 +1191,33 @@ app.post("/api/boards/:roomId/restore/:snapshotId", (request, response) => {
 
 const clientDistPath = path.resolve("dist/client");
 const clientIndexPath = path.join(clientDistPath, "index.html");
+const landingDistPath = path.resolve("dist/landing");
+const landingIndexPath = path.join(landingDistPath, "index.html");
+
+if (fs.existsSync(landingDistPath)) {
+  app.use("/landing", express.static(landingDistPath));
+}
 app.use(express.static(clientDistPath));
+
 app.get("*", (request, response, next) => {
   if (request.path.startsWith("/api") || request.path === "/health" || request.path === "/metrics") {
     next();
     return;
   }
 
+  // If path starts with /landing or is root without room query, serve the 3D landing page if available
+  const hasRoomOrToken = Boolean(request.query.room || request.query.token);
+  const isDirectBoard = request.path.startsWith("/app") || request.path.startsWith("/board");
+
+  if (!hasRoomOrToken && !isDirectBoard && fs.existsSync(landingIndexPath)) {
+    response.sendFile(landingIndexPath);
+    return;
+  }
+
   if (fs.existsSync(clientIndexPath)) {
     response.sendFile(clientIndexPath);
+  } else if (fs.existsSync(landingIndexPath)) {
+    response.sendFile(landingIndexPath);
   } else {
     response.status(200).json({
       status: "ok",

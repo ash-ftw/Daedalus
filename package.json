@@ -17,7 +17,9 @@
     "dev:client": "vite --host 127.0.0.1 --port 5173",
     "dev:landing": "vite landing --host 127.0.0.1 --port 3333",
     "dev:server": "tsx watch server/src/index.ts",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && vite build landing --outDir ../dist/landing --emptyOutDir",
+    "build:client": "vite build",
+    "build:landing": "vite build landing --outDir ../dist/landing --emptyOutDir",
     "check": "tsc --noEmit",
     "test": "node --import tsx --test server/src/auth/tokens.test.ts server/src/ai/guardrails.test.ts",
     "start": "tsx server/src/index.ts"

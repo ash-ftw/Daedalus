@@ -1027,13 +1027,19 @@
       let currentRole = 'owner';
 
       const getApiUrl = () => {
-        const hostname = window.location.hostname || '127.0.0.1';
-        return `${window.location.protocol}//${hostname}:3001`;
+        if (window.location.port === '3333') {
+          const hostname = window.location.hostname || '127.0.0.1';
+          return `${window.location.protocol}//${hostname}:3001`;
+        }
+        return window.location.origin;
       };
 
       const getClientUrl = () => {
-        const hostname = window.location.hostname || '127.0.0.1';
-        return `${window.location.protocol}//${hostname}:5173`;
+        if (window.location.port === '3333') {
+          const hostname = window.location.hostname || '127.0.0.1';
+          return `${window.location.protocol}//${hostname}:5173`;
+        }
+        return window.location.origin;
       };
 
       function setMode(mode) {
