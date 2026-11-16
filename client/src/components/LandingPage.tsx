@@ -9,6 +9,22 @@ interface LandingPageProps {
 export function LandingPage({ onGetStarted, onSignIn }: LandingPageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  // Guarantee smooth page scrolling when LandingPage is mounted
+  useEffect(() => {
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflowY = "auto";
+    document.body.style.overflowX = "hidden";
+    document.documentElement.style.overflowY = "auto";
+    document.documentElement.style.overflowX = "hidden";
+
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
+  }, []);
+
   // Three.js 3D Greek Labyrinth Wireframe
   useEffect(() => {
     const canvas = canvasRef.current;

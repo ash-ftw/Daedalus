@@ -3,13 +3,28 @@
    Ultra-Minimalist · Swiss Brutalism · Greek Heritage · Zero Clutter
    ========================================================================== */
 
+html, body {
+  background-color: #000000;
+  scroll-behavior: smooth;
+}
+
+body:has(.sm-landing-root),
+html:has(.sm-landing-root) {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: auto !important;
+  min-height: 100vh;
+}
+
 .sm-landing-root {
   position: relative;
   min-height: 100vh;
+  width: 100%;
   background-color: #000000;
   color: #ffffff;
   font-family: 'Roboto Mono', monospace;
   overflow-x: hidden;
+  overflow-y: visible;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
