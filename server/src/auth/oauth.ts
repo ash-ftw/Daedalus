@@ -107,6 +107,12 @@ function redirectUriFor(provider: OAuthProvider, env: NodeJS.ProcessEnv) {
     return explicit;
   }
 
+  if (env.NODE_ENV === "production" && !env.PUBLIC_API_URL) {
+    console.warn(
+      `[SECURITY/CONFIG WARNING] Neither ${provider.toUpperCase()}_OAUTH_REDIRECT_URI nor PUBLIC_API_URL is configured in production. OAuth callback will default to 127.0.0.1, which will fail for external users.`
+    );
+  }
+
   const baseUrl = env.PUBLIC_API_URL ?? `http://127.0.0.1:${env.PORT ?? 3001}`;
   return `${baseUrl.replace(/\/+$/, "")}/api/auth/oauth/${provider}/callback`;
 }

@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: daedalus-whiteboard
+    env: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: AUTH_REQUIRED
+        value: "false"
+      - key: AUTH_JWT_SECRET
+        generateValue: true
+      - key: AI_PROVIDER
+        value: groq
+      - key: GROQ_MODEL
+        value: meta-llama/llama-4-scout-17b-16e-instruct
+      - key: GROQ_API_KEY
+        sync: false
+      - key: BOARD_STORAGE
+        value: file
+      - key: BOARD_SNAPSHOT_PATH
+        value: data/boards.snapshot.json
+

@@ -1,6 +1,7 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
+import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import JSZip from "jszip";
@@ -72,7 +73,32 @@ import { metricsMiddleware, metricsText } from "./monitoring";
 const app = express();
 const server = http.createServer(app);
 const port = Number(process.env.PORT ?? 3001);
-const clientOrigin = process.env.CLIENT_ORIGIN ?? "http://127.0.0.1:5173";
+const rawClientOrigin = process.env.CLIENT_ORIGIN ?? "http://127.0.0.1:5173";
+const allowedOrigins = rawClientOrigin
+  .split(",")
+  .map((origin) => origin.trim().replace(/\/+$/, ""))
+  .filter(Boolean);
+const clientOrigin = allowedOrigins[0] ?? "http://127.0.0.1:5173";
+
+function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return true;
+  const normalized = origin.replace(/\/+$/, "");
+  if (allowedOrigins.includes("*") || allowedOrigins.includes(normalized)) {
+    return true;
+  }
+  if (allowedOrigins.some((allowed) => allowed.includes(".vercel.app")) && normalized.endsWith(".vercel.app")) {
+    return true;
+  }
+  return false;
+}
+
+const corsOriginChecker = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+  if (isOriginAllowed(origin)) {
+    callback(null, true);
+  } else {
+    callback(null, false);
+  }
+};
 const aiProvider = process.env.AI_PROVIDER ?? "mock";
 const hasEnvValue = (value: string | undefined) => Boolean(value?.trim());
 const objectStorage = createObjectStorageFromEnv();
@@ -85,7 +111,7 @@ await presenceStore.initialize();
 
 const io = new Server(server, {
   cors: {
-    origin: clientOrigin,
+    origin: corsOriginChecker,
     credentials: true
   }
 });
@@ -104,7 +130,7 @@ io.use((socket, next) => {
 
 app.use(
   cors({
-    origin: clientOrigin,
+    origin: corsOriginChecker,
     credentials: true
   })
 );
@@ -1163,14 +1189,24 @@ app.post("/api/boards/:roomId/restore/:snapshotId", (request, response) => {
   response.json(operation);
 });
 
-app.use(express.static(path.resolve("dist/client")));
+const clientDistPath = path.resolve("dist/client");
+const clientIndexPath = path.join(clientDistPath, "index.html");
+app.use(express.static(clientDistPath));
 app.get("*", (request, response, next) => {
   if (request.path.startsWith("/api") || request.path === "/health" || request.path === "/metrics") {
     next();
     return;
   }
 
-  response.sendFile(path.resolve("dist/client/index.html"));
+  if (fs.existsSync(clientIndexPath)) {
+    response.sendFile(clientIndexPath);
+  } else {
+    response.status(200).json({
+      status: "ok",
+      service: "Daedalus whiteboard API",
+      message: "Frontend client not built. Build the client with `npm run build` or access via the configured frontend origin."
+    });
+  }
 });
 
 io.on("connection", (socket) => {
@@ -1442,5 +1478,5 @@ io.on("connection", (socket) => {
 });
 
 server.listen(port, () => {
-  console.log(`Daedalus whiteboard API listening on http://127.0.0.1:${port}`);
+  console.log(`Daedalus whiteboard API listening on port ${port} (env: ${process.env.NODE_ENV ?? "development"})`);
 });

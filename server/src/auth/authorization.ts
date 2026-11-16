@@ -32,6 +32,17 @@ export const authConfig: AuthConfig = {
   inviteSecret: process.env.AUTH_INVITE_SECRET
 };
 
+if (
+  process.env.NODE_ENV === "production" &&
+  (!process.env.AUTH_JWT_SECRET ||
+    process.env.AUTH_JWT_SECRET === "dev-only-change-me" ||
+    process.env.AUTH_JWT_SECRET === "change-me-in-production")
+) {
+  console.warn(
+    "[SECURITY WARNING] AUTH_JWT_SECRET is unset or using a default placeholder in production! Set a cryptographically secure random secret via the AUTH_JWT_SECRET environment variable."
+  );
+}
+
 export function authStatus() {
   return {
     required: authConfig.required,
